@@ -2,7 +2,7 @@
 
 Resolve **unresolved pull-request review comments** with a clean split of labor:
 
-- ** A higher reasoning agent, (the orchestrator)** reasons, writes the code fixes, drives issue-by-issue
+- **A higher reasoning agent, (the orchestrator)** reasons, writes the code fixes, drives issue-by-issue
   approval with you, commits, and pushes. It has **no GitHub tools**.
 - **Haiku (`github-worker` subagents)** do every GitHub read/write via the GitHub MCP
   server (with a `gh` CLI fallback) and hand back only distilled results.
