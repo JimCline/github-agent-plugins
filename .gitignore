@@ -1,0 +1,9 @@
+# Personal/local Claude Code project overrides (not part of the plugin)
+.claude/settings.local.json
+
+# Secrets
+.env
+.env.*
+
+# OS noise
+.DS_Store

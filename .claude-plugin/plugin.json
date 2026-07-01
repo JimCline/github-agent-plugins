@@ -1,0 +1,9 @@
+{
+  "name": "github-pr-review",
+  "version": "0.1.0",
+  "description": "Resolve unresolved PR review comments with a high-reasoning orchestrator that delegates all GitHub MCP work to a fleet of Haiku workers.",
+  "author": {
+    "name": "Jim Cline"
+  },
+  "keywords": ["github", "pull-request", "code-review", "mcp", "haiku", "orchestration"]
+}
