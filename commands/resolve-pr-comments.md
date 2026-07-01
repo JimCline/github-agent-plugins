@@ -37,15 +37,16 @@ If the PR number still isn't known, delegate to `github-worker`: *"List open PRs
 *"Confirm GitHub access to `<owner/repo>`: read its pull requests (list/search PRs, or read
 one PR) and return ok/failed + reason. Fetch nothing else."*
 - **ok →** continue.
-- **failed → ONBOARDING.** The GitHub MCP server isn't configured or reachable. First
-  diagnose the most common cause — a missing token:
-  `[ -n "$GITHUB_PERSONAL_ACCESS_TOKEN" ] && echo "token: set" || echo "token: MISSING"`.
-  Then explain the options and help set up whichever the user picks:
+- **failed → ONBOARDING.** The GitHub MCP server isn't configured or reachable. The most
+  common cause is an unset/invalid PAT — this plugin stores its token in the secure
+  `github_pat` config (OS keychain), NOT an env var, so guide the user to set it via
+  **`/plugin` → `resolve-pr-comments` → Configure** (or the install dialog). Then explain the
+  server options and help set up whichever they pick:
   - **(a) Official `github/github-mcp-server`** (Docker or native binary) + a GitHub PAT — recommended, token-based, works headless.
   - **(b) Classic `@modelcontextprotocol/server-github`** via npx + PAT.
   - **(c) GitHub-hosted remote MCP** (OAuth) — most capable, but not for headless/scheduled runs.
-  Walk them through: creating a PAT with scopes `repo` (plus `read:org` for org repos),
-  exporting `GITHUB_PERSONAL_ACCESS_TOKEN`, and — if they pick a non-default server —
+  Walk them through: creating a fine-grained PAT (Metadata: Read, Pull requests: Read & write),
+  pasting it into the plugin's `github_pat` config, and — if they pick a non-default server —
   editing `agents/github-worker.md`'s `mcpServers` block (and the `mcp__github__*` tool
   names to match that server). Re-run 0.2 after.
 

@@ -5,5 +5,14 @@
   "author": {
     "name": "Jim Cline"
   },
-  "keywords": ["github", "pull-request", "review-comments", "comment-resolution", "mcp", "haiku", "orchestration"]
+  "keywords": ["github", "pull-request", "review-comments", "comment-resolution", "mcp", "haiku", "orchestration"],
+  "userConfig": {
+    "github_pat": {
+      "type": "string",
+      "title": "GitHub Personal Access Token",
+      "description": "Dedicated PAT for this plugin's Haiku github-worker. Fine-grained: Metadata = Read, Pull requests = Read & write. Stored in your OS keychain — never in settings.json or a shared env var.",
+      "sensitive": true,
+      "required": false
+    }
+  }
 }

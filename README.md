@@ -57,17 +57,17 @@ See [GitHub token requirements](#github-token-requirements) for exact scopes. In
 create a token at **GitHub → Settings → Developer settings → Personal access tokens**, give
 it access to the repo(s) you'll review, and grant it PR read+write.
 
-### 3. Provide the token to the worker
+### 3. Provide the token — part of install, no env var
 
-The default server reads the **`GITHUB_PERSONAL_ACCESS_TOKEN`** environment variable
-(a PAT takes precedence over any OAuth flow):
+The plugin declares a secure `userConfig` option, so when you run
+`/plugin install resolve-pr-comments@jimcline` Claude Code shows a **configuration dialog**
+with a masked **"GitHub Personal Access Token"** field. Paste your PAT there. It's stored in
+your **OS keychain** — never in `settings.json`, a tracked file, or the shared
+`GITHUB_PERSONAL_ACCESS_TOKEN` env var, so it can't clash with your other GitHub tooling.
 
-```sh
-export GITHUB_PERSONAL_ACCESS_TOKEN=github_pat_xxx   # add to your shell profile
-```
-
-> **Never commit the token.** Keep it in your environment or a git-ignored `.env`, not in
-> any tracked file. This repo's `.gitignore` already excludes `.env`.
+Change it anytime via **`/plugin` → `resolve-pr-comments` → Configure**. Under the hood the
+worker's MCP config reads it as `${user_config.github_pat}` and passes it to the server as
+`GITHUB_PERSONAL_ACCESS_TOKEN`.
 
 You don't have to get this perfect up front — running `/resolve-pr-comments` health-checks
 GitHub access first and, if it fails (the most common cause is a missing token), **walks
@@ -141,7 +141,7 @@ through your normal git auth, not this token — see the note below.)
 | `read:org` | Only if you work with **organization-owned** repos and want the server's org tools. |
 
 Create at **Settings → Developer settings → Personal access tokens → Tokens (classic)**,
-check **`repo`**, set an expiry, generate, and export it as `GITHUB_PERSONAL_ACCESS_TOKEN`.
+check **`repo`**, set an expiry, generate, and paste it into the plugin's **GitHub Personal Access Token** config field (step 3).
 
 ### Fine-grained PAT (least privilege — recommended)
 
@@ -243,8 +243,9 @@ expiry.
 
 ## Troubleshooting
 
-- **Health-check fails / "token: MISSING".** `GITHUB_PERSONAL_ACCESS_TOKEN` isn't set in the
-  environment Claude Code launched from. Export it and restart the session.
+- **Health-check fails / auth error.** The plugin's `github_pat` config is empty or invalid.
+  Set it via `/plugin` → `resolve-pr-comments` → Configure (or the install dialog); it's
+  stored in your OS keychain, not an env var.
 - **Docker errors on the default server.** Ensure Docker is running, or switch the worker to
   the native binary / npx classic (see step 4).
 - **Can reply but can't resolve threads.** The token's user lacks write/triage on the repo,

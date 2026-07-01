@@ -53,7 +53,16 @@ mcpServers:
     # because the worker must reply to and resolve threads.
     args: ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN", "-e", "GITHUB_TOOLSETS=pull_requests", "ghcr.io/github/github-mcp-server"]
     env:
-      GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+      # Token comes from this plugin's OWN secure config — plugin.json `userConfig.github_pat`,
+      # stored in your OS keychain. Declared as `userConfig`, referenced as `user_config`.
+      # It is NOT the shared GITHUB_PERSONAL_ACCESS_TOKEN env var, so it can't clash with your
+      # other GitHub tooling. The user sets it in the install / `/plugin` config dialog. The
+      # container still receives GITHUB_PERSONAL_ACCESS_TOKEN (via `-e` above) — only the
+      # VALUE's source changed.
+      GITHUB_PERSONAL_ACCESS_TOKEN: "${user_config.github_pat}"
+      # Fallback: if your Claude Code build won't substitute a *sensitive* user_config value
+      # into a subagent-inline server, use a DEDICATED host env var (still avoids the global
+      # clash):  GITHUB_PERSONAL_ACCESS_TOKEN: "${RESOLVE_PR_COMMENTS_PAT}"
   # ── Alternative A: official server as a native binary (no Docker) ──
   #   command: github-mcp-server
   #   args: ["stdio"]
