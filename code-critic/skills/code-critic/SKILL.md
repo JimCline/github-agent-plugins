@@ -35,8 +35,8 @@ Execute the full, authoritative procedure in this plugin's command file:
 **`${CLAUDE_PLUGIN_ROOT}/commands/code-critic.md`** — read it and follow every step in
 order. That file is the single source of truth for the flow; do not improvise past it.
 
-Outline (same steps): **0** arm the session-scoped guard marker (write
-`$CLAUDE_CODE_SESSION_ID` into `.git/code-critic.lock`) + pick mode (local vs GitHub PR) →
+Outline (same steps): **0** arm the session-named guard lock
+(`touch .git/code-critic-$CLAUDE_CODE_SESSION_ID.lock`) + pick mode (local vs GitHub PR) →
 **local:** choose base ref → YOU fetch + generate per-file diffs vs `origin/<base>` →
 choose reviewer (advisor default / main) → adversarial review → severity-ranked numbered
 findings with a succinct action each → choose how to work the list (one-by-one / fix all /

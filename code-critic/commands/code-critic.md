@@ -28,15 +28,20 @@ Optional argument (a PR number/URL, or `--branch <ref>` / `--against <ref>`): `$
 
 ## Step 0 — Activate the guard, pick the mode
 
-**0.1 Arm the review marker (self-healing, session-scoped).** Remove any stale lock, then
-write a fresh one containing THIS session's ID so the guard constrains only this session
-(other sessions in the same repo are untouched):
-`rm -f "$PWD/.git/code-critic.lock" && echo "$CLAUDE_CODE_SESSION_ID" > "$PWD/.git/code-critic.lock"`.
-Also prune any stale code-critic worktrees from a crashed prior run
-(ask `critic-worker` to run `git worktree prune` if needed — or note it for cleanup).
+**0.1 Arm the review lock (self-healing, session-named).** The lock file is NAMED after
+this session, so the guard constrains only this session and concurrent reviews in the same
+repo each hold their own lock:
+`touch "$PWD/.git/code-critic-${CLAUDE_CODE_SESSION_ID:-}.lock"`
+— but if `$CLAUDE_CODE_SESSION_ID` is empty/unset, arm the bare fallback instead
+(`touch "$PWD/.git/code-critic.lock"`, which blocks all sessions). While arming, also
+clean up stale locks from crashed runs (`find "$PWD/.git" -maxdepth 1 -name 'code-critic*.lock' -mmin +480 -delete`)
+and note any stale code-critic worktrees for cleanup.
 **Run the arming command yourself from the repo root** so `$PWD/.git` matches the path the
-guard checks. On EVERY exit path (success, abort, or error) you MUST remove the lock:
-`rm -f "$PWD/.git/code-critic.lock"` — tell the user if you couldn't.
+guard checks. On EVERY exit path (success, abort, or error) you MUST remove the lock YOU
+armed (the session-named one — or the bare `code-critic.lock` only if you armed the
+fallback; another session may own it): e.g.
+`rm -f "$PWD/.git/code-critic-${CLAUDE_CODE_SESSION_ID}.lock"` — tell the user if you
+couldn't.
 
 **0.2 Pick the mode.** If `$ARGUMENTS` names a PR (number or URL) → **GitHub PR flow**.
 If it passes `--branch`/`--against` or nothing → **Local flow** (default). If ambiguous,

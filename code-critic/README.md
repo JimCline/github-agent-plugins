@@ -24,8 +24,9 @@ A **PreToolUse guard hook** enforces the split for the duration of a review: it 
 main agent from `mcp__github__*`, `gh`, and remote-mutating git (`push`/`commit`/`pull`/
 `worktree`) and tells it to delegate; `git fetch` and read-only git stay allowed. The
 guard is inert outside an active review and **scoped to the initiating session**: the
-self-healing `.git/code-critic.lock` marker stores that session's ID, so concurrent
-Claude Code sessions in the same repo are never blocked.
+self-healing lock file is *named* after that session
+(`.git/code-critic-<session_id>.lock`), so other Claude Code sessions in the same repo are
+never blocked — and two concurrent reviews each hold their own lock.
 
 ---
 

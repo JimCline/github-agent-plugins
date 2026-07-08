@@ -9,16 +9,17 @@
 // Mechanism: exit code 2 + a stderr message BLOCKS the tool call and feeds the
 // message back to the model as feedback (per the Claude Code hooks reference).
 //
-// Scope — two gates, both must hold or the guard is inert:
-//   1. A sentinel marker at `<cwd>/.git/code-critic.lock`, written by the
-//      /code-critic command at step 0 and removed on every exit path. A freshness
-//      guard ignores a marker older than MAX_AGE_MS so a crashed run can't
-//      silently block future sessions.
-//   2. SESSION SCOPING: the marker's CONTENT is the initiating session's ID
-//      (`$CLAUDE_CODE_SESSION_ID`). The guard blocks only when the hook input's
-//      `session_id` matches — other Claude Code sessions in the same repo are
-//      untouched. An EMPTY marker (env var unavailable) falls back to blocking
-//      all sessions, the safe-but-blunt legacy behavior.
+// Scope — SESSION-NAMED lock files. The /code-critic command arms the guard at
+// step 0 by touching `<cwd>/.git/code-critic-<session_id>.lock` (using
+// $CLAUDE_CODE_SESSION_ID) and removes it on every exit path. The guard blocks
+// only when the lock named after the hook input's OWN `session_id` exists —
+// other sessions in the same repo are untouched, and two concurrent reviews
+// each hold their own lock without clobbering each other. A freshness guard
+// ignores a lock older than MAX_AGE_MS so a crashed run can't silently block a
+// future session that reuses the ID.
+//
+// Fallback: a bare `<cwd>/.git/code-critic.lock` (armed when the session-id env
+// var was unavailable) blocks ALL sessions — safe-but-blunt legacy behavior.
 //
 // What is blocked (main agent, during its own review):
 //   - any `mcp__github__*` tool
@@ -31,7 +32,7 @@
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-const MAX_AGE_MS = 8 * 60 * 60 * 1000; // 8h — bounds a stale-marker footgun.
+const MAX_AGE_MS = 8 * 60 * 60 * 1000; // 8h — bounds a stale-lock footgun.
 
 function readInput() {
   try {
@@ -41,15 +42,12 @@ function readInput() {
   }
 }
 
-// Returns the lock's session-id content ('' if empty), or null if no live lock.
-function activeLockSession(cwd) {
-  const path = join(cwd || process.cwd(), '.git', 'code-critic.lock');
+function lockActive(cwd, name) {
   try {
-    const st = statSync(path);
-    if (Date.now() - st.mtimeMs >= MAX_AGE_MS) return null; // stale → inert.
-    return readFileSync(path, 'utf8').trim();
+    const st = statSync(join(cwd || process.cwd(), '.git', name));
+    return Date.now() - st.mtimeMs < MAX_AGE_MS; // stale → treated as absent.
   } catch {
-    return null; // no marker (or unreadable) → guard inert.
+    return false;
   }
 }
 
@@ -58,16 +56,14 @@ const input = readInput();
 // Subagents (critic-worker carries agent_id) ARE the delegate — always allow.
 if (input.agent_id) process.exit(0);
 
-const lockSession = activeLockSession(input.cwd);
+// Armed for THIS session (session-named lock), or for everyone (bare legacy
+// lock, written when the arming step had no session id)?
+const armed =
+  (input.session_id &&
+    lockActive(input.cwd, `code-critic-${input.session_id}.lock`)) ||
+  lockActive(input.cwd, 'code-critic.lock');
 
-// Guard is inert outside an active review.
-if (lockSession === null) process.exit(0);
-
-// SESSION SCOPING: only the session that armed the lock is constrained. An empty
-// lock (arming env var unavailable) blocks all sessions — safe fallback.
-if (lockSession !== '' && input.session_id && input.session_id !== lockSession) {
-  process.exit(0);
-}
+if (!armed) process.exit(0);
 
 const tool = input.tool_name || '';
 const cmd = (input.tool_input && input.tool_input.command) || '';
