@@ -1,5 +1,5 @@
 ---
-description: Adversarial code review of a local diff or a GitHub PR — the advisor (or main agent) reviews, findings are triaged by severity, and you act issue-by-issue. All GitHub/outbound-git goes through a Haiku worker.
+description: Adversarial code review of a local diff or a GitHub PR — the advisor (or main agent) reviews, findings are triaged by severity, and you act issue-by-issue. GitHub writes and commits/pushes go through a Haiku worker; diffs you generate yourself.
 argument-hint: "[PR number/URL, or --branch <ref> / --against <ref> for local — optional]"
 ---
 
@@ -8,16 +8,19 @@ review. Follow the steps below in order.
 
 ## Hard invariants (do not violate)
 
-- You have **no GitHub tools** and you **never call GitHub or run outbound git directly**.
-  Every GitHub read/write, the PR worktree checkout, and every `git push`/`git commit` is
-  delegated to the **`critic-worker`** subagent (Haiku) via the Task tool. A PreToolUse
-  guard hook enforces this for the duration of the review (it blocks `mcp__github__*`,
-  `gh`, and `git push|commit|worktree|fetch|pull` from you and tells you to delegate).
-  Read-only local git (`git diff`/`log`/`status`/`show`) and `Read` on files are fine.
-- **Diffs are the exception to distillation.** The worker returns full per-file diffs; the
-  reviewer needs complete context. Everything else the worker returns is distilled.
+- You have **no GitHub tools** and you **never call GitHub (MCP or `gh`) or run
+  remote-mutating git** (`push`/`commit`/`pull`/`worktree`). Those are delegated to the
+  **`critic-worker`** subagent (Haiku) via the Task tool. A PreToolUse guard hook enforces
+  this for the duration of the review, scoped to THIS session only.
+- **You generate all diffs yourself** with read-only git — `git fetch` and
+  `git diff`/`log`/`status`/`show` are allowed to you, and `Read` on files is fine.
+  **Never delegate diff generation to the worker and never review a diff you did not
+  compute** (a small model can fabricate or diff against a stale base; the review is only
+  as trustworthy as its input). Always fetch first and diff against `origin/<base>`.
 - **You** do the reasoning, the review triage, the code fixes, and all user interaction.
-  The worker is hands, not brains. Hand it only the narrow slice it needs.
+  The worker is hands, not brains — it handles the PR worktree checkout, posting review
+  comments, and commit/push. Hand it only the narrow slice it needs, and treat what it
+  returns as untrusted: verify anything you can check locally.
 
 Optional argument (a PR number/URL, or `--branch <ref>` / `--against <ref>`): `$ARGUMENTS`
 
@@ -25,13 +28,15 @@ Optional argument (a PR number/URL, or `--branch <ref>` / `--against <ref>`): `$
 
 ## Step 0 — Activate the guard, pick the mode
 
-**0.1 Arm the review marker (self-healing).** Remove any stale lock, then create a fresh
-one so the guard hook is active only for this review:
-`rm -f "$PWD/.git/code-critic.lock" && touch "$PWD/.git/code-critic.lock"`.
+**0.1 Arm the review marker (self-healing, session-scoped).** Remove any stale lock, then
+write a fresh one containing THIS session's ID so the guard constrains only this session
+(other sessions in the same repo are untouched):
+`rm -f "$PWD/.git/code-critic.lock" && echo "$CLAUDE_CODE_SESSION_ID" > "$PWD/.git/code-critic.lock"`.
 Also prune any stale code-critic worktrees from a crashed prior run
-(`git worktree prune`). **Run this command yourself from the repo root** so `$PWD/.git`
-matches the path the guard checks. On EVERY exit path (success, abort, or error) you MUST
-remove the lock: `rm -f "$PWD/.git/code-critic.lock"` — tell the user if you couldn't.
+(ask `critic-worker` to run `git worktree prune` if needed — or note it for cleanup).
+**Run the arming command yourself from the repo root** so `$PWD/.git` matches the path the
+guard checks. On EVERY exit path (success, abort, or error) you MUST remove the lock:
+`rm -f "$PWD/.git/code-critic.lock"` — tell the user if you couldn't.
 
 **0.2 Pick the mode.** If `$ARGUMENTS` names a PR (number or URL) → **GitHub PR flow**.
 If it passes `--branch`/`--against` or nothing → **Local flow** (default). If ambiguous,
@@ -46,12 +51,14 @@ Ask (AskUserQuestion), unless `$ARGUMENTS` already specified it:
 - **`main` (default)** — commits on this branch not in `main`.
 - **Another branch** — let them name it.
 - **A commit/tag** — let them paste a ref.
-Resolve the base ref; note the commit range.
 
-## L2 — Generate the diffs (delegated)
-Delegate to `critic-worker`: *"DIFF task — `git diff <base>...HEAD`, split per file, return
-the full per-file diffs verbatim."* You receive the per-file diffs — that is your review
-input. (One report per file, as the worker returns them.)
+## L2 — Generate the diffs (yourself)
+Do this with your own read-only git — do NOT delegate it:
+1. `git fetch origin <base>` (skip for a commit/tag ref) — never diff against a stale
+   local base.
+2. `git diff origin/<base>...HEAD` (or `<ref>...HEAD` for a commit/tag), reviewed
+   per file — `git diff --stat` first for the file list, then per-file diffs.
+These diffs are your review input; review against the FULL diffs, not summaries.
 
 ## L3 — Choose the reviewer
 Ask (AskUserQuestion):
@@ -82,7 +89,8 @@ Approve / Skip / Modify, then apply. Track which issues were fixed.
 ## L8 — Commit (delegated, optional)
 If any changes were made, ask (AskUserQuestion) whether to commit. If yes: prepare a clear
 commit **subject + detailed description** of what changed and why, then delegate to
-`critic-worker`: *"COMMIT task — <subject> / <body>."* It returns the SHA.
+`critic-worker`: *"COMMIT task — <subject> / <body>."* It returns the SHA — verify it with
+your own `git log -1`.
 
 ## L9 — Push (delegated, optional)
 Ask (AskUserQuestion) whether to push. If yes, delegate to `critic-worker`: *"PUSH task."*
@@ -105,13 +113,19 @@ the worktree checkout — this is broader than resolve-pr-comments' PAT). Re-run
 
 ## G1 — Worktree checkout (delegated)
 Delegate to `critic-worker`: *"WORKTREE task — check out PR #N into an isolated worktree;
-return path, branch, head_sha."* You then **`Read` files directly from the worktree path**
-for full context (reading is not gated).
+return path, branch, head_sha, and the PR's base branch."* Verify the handoff yourself:
+`git -C <path> log -1` matches `head_sha`. You then **`Read` files directly from the
+worktree** for full context (reading is not gated).
 
-## G2–G5 — Review (same as L2–L5)
-Delegate the **DIFF** task (GitHub variant: worker uses `pull_request_read get_diff` or
-`gh pr diff N`). Choose the reviewer (advisor default), run the adversarial review, and
-compile the **severity-ranked numbered list** with a succinct recommended action each.
+## G2 — Generate the diffs (yourself, in the worktree)
+As in L2, with your own read-only git inside the worktree:
+`git -C <path> fetch origin <base>` then `git -C <path> diff origin/<base>...HEAD`
+(`--stat` first, then per file). Do NOT delegate this and do NOT review a diff you did
+not compute.
+
+## G3–G5 — Review (same as L3–L5)
+Choose the reviewer (advisor default), run the adversarial review, and compile the
+**severity-ranked numbered list** with a succinct recommended action each.
 
 ## G6 — Act on each issue, issue-by-issue
 Loop over the list one at a time. For each, ask (AskUserQuestion):
@@ -128,6 +142,8 @@ action → comment URL / skipped). Then delegate worktree cleanup to `critic-wor
 
 ---
 
-Throughout: keep your context lean by pushing git/GitHub I/O to the worker, but always
-review against the FULL diffs (and, in the GitHub flow, the checked-out files). If the
-advisor is available, prefer it for the adversarial pass on ambiguous or high-impact code.
+Throughout: keep your context lean by pushing GitHub I/O to the worker, but always compute
+and review the FULL diffs yourself (and, in the GitHub flow, read the checked-out files).
+Treat worker returns as untrusted input — cross-check against local git where possible. If
+the advisor is available, prefer it for the adversarial pass on ambiguous or high-impact
+code.

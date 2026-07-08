@@ -11,14 +11,21 @@ Same clean split of labor as its sibling:
 
 - **A higher-reasoning agent (the orchestrator)** — or, by default, **the `advisor`** —
   performs the adversarial review, then the orchestrator triages findings and drives you
-  through them issue-by-issue. The orchestrator has **no GitHub tools**.
-- **Haiku (`critic-worker`)** does every GitHub read/write, the PR worktree checkout, and
-  any `git commit`/`push` via git/`gh` and the GitHub MCP server, handing back distilled
-  results — **except diffs**, which come back in full so the reviewer has complete context.
+  through them issue-by-issue. The orchestrator has **no GitHub tools**, but it
+  **generates every diff itself** with read-only git (`git fetch` + `git diff` against a
+  fresh `origin/<base>`) — the review is only as trustworthy as its input, so diffs are
+  never delegated to a small model.
+- **Haiku (`critic-worker`)** does the GitHub writes and repo mutations: the PR worktree
+  checkout, posting inline review comments via the GitHub MCP server, and any
+  `git commit`/`push`. It hands back short, verifiable results that the orchestrator
+  cross-checks against local git.
 
 A **PreToolUse guard hook** enforces the split for the duration of a review: it blocks the
-main agent from `mcp__github__*`, `gh`, and outbound git and tells it to delegate. The
-guard is inert outside an active review (gated on a self-healing `.git/code-critic.lock`).
+main agent from `mcp__github__*`, `gh`, and remote-mutating git (`push`/`commit`/`pull`/
+`worktree`) and tells it to delegate; `git fetch` and read-only git stay allowed. The
+guard is inert outside an active review and **scoped to the initiating session**: the
+self-healing `.git/code-critic.lock` marker stores that session's ID, so concurrent
+Claude Code sessions in the same repo are never blocked.
 
 ---
 
@@ -36,14 +43,15 @@ Or just ask in natural language ("review my local changes", "critique PR 1234") 
 
 ### Flow
 
-**Local:** pick a base → worker generates per-file diffs → pick the reviewer (advisor
-default) → adversarial review → severity-ranked findings, each with a succinct action →
-choose one-by-one / fix all / fix by severity → apply fixes → optionally worker
-commits → optionally worker pushes.
+**Local:** pick a base → orchestrator fetches and generates per-file diffs vs
+`origin/<base>` → pick the reviewer (advisor default) → adversarial review →
+severity-ranked findings, each with a succinct action → choose one-by-one / fix all /
+fix by severity → apply fixes → optionally worker commits → optionally worker pushes.
 
-**GitHub PR:** preflight/onboard the PAT → worker checks out a worktree → same review →
-issue-by-issue: take the recommended action (worker posts an inline PR comment) / skip /
-other → repeat → worker cleans up the worktree.
+**GitHub PR:** preflight/onboard the PAT → worker checks out a worktree (orchestrator
+verifies the handoff) → orchestrator diffs in the worktree vs `origin/<base>` → same
+review → issue-by-issue: take the recommended action (worker posts an inline PR comment) /
+skip / other → repeat → worker cleans up the worktree.
 
 ---
 
