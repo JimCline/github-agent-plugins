@@ -43,6 +43,8 @@ findings with a succinct action each → choose how to work the list (one-by-one
 by severity) → apply fixes → optionally worker commits → optionally worker pushes.
 **GitHub PR:** preflight + onboard the `github_pat` (Metadata:Read, Pull requests:R/W,
 Contents:Read) → worker checks out a worktree (verify its handoff) → YOU diff in the
-worktree vs `origin/<base>` → same review → issue-by-issue, take recommended action
-(worker posts an inline PR comment) / skip / other → repeat → worker cleans up the
-worktree. Always remove the review marker on exit.
+worktree vs `origin/<base>` → same review → worker lists existing review threads; dedup —
+findings already flagged (especially if resolved/addressed) get **Skip recommended**
+instead of a comment → issue-by-issue, post comment / skip / other (user can Tab-amend
+the proposed wording) → repeat → worker cleans up the worktree. Always remove the review
+marker on exit.

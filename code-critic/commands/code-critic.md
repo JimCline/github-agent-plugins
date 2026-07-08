@@ -86,6 +86,10 @@ Ask (AskUserQuestion):
 - **Review each issue one-by-one** (default), **Fix all**, **Fix all by severity**
   (choose a threshold), or **Something else** (follow their instruction).
 
+Whenever you present selectable options (here and in L7), remind the user they can press
+**Tab on an option to amend it** — e.g. adjust a recommended action's wording or scope —
+instead of falling back to "Other".
+
 ## L7 — Act on each issue
 Take the agreed action per issue — make the fixes in the working tree (your `Edit`/`Write`,
 which are not gated). In one-by-one mode, loop: show the issue + recommended action, ask
@@ -128,17 +132,33 @@ As in L2, with your own read-only git inside the worktree:
 (`--stat` first, then per file). Do NOT delegate this and do NOT review a diff you did
 not compute.
 
-## G3–G5 — Review (same as L3–L5)
+## G3–G5 — Review (same as L3–L5), then dedup against existing comments
 Choose the reviewer (advisor default), run the adversarial review, and compile the
 **severity-ranked numbered list** with a succinct recommended action each.
 
+**G5.5 — Fetch existing review comments (delegated) and dedup.** Delegate to
+`critic-worker`: *"EXISTING-COMMENTS task — list the review threads already on PR #N."*
+Cross-reference each finding against them: a finding **overlaps** an existing comment when
+it targets the same `path` + nearby line, or raises substantially the same point anywhere.
+Annotate overlapping findings in the list: *already flagged* (+ by whom), and whether the
+thread is **resolved/addressed** or still open. Do not silently drop them — the user
+decides — but they change the default in G6.
+
 ## G6 — Act on each issue, issue-by-issue
-Loop over the list one at a time. For each, ask (AskUserQuestion):
-- **Take the recommended action** — post an inline PR review comment. Prepare the exact
-  `path`, `line` (and `side`, defaulting to `RIGHT`), and comment `body`, then delegate to
+Loop over the list one at a time. For each, show the issue (including any *already
+flagged* annotation with the existing comment quoted briefly), then ask
+(AskUserQuestion). Tell the user they can press **Tab on an option to amend it** — e.g.
+tweak the proposed comment wording before it's posted. Options, ordered so the
+recommended one is first:
+- **If the issue is NOT already flagged** → recommend **posting the comment**: show the
+  drafted `body`; on approval (possibly amended via Tab), prepare the exact `path`,
+  `line` (and `side`, defaulting to `RIGHT`), and final `body`, then delegate to
   `critic-worker`: *"COMMENT task — <path>:<line> <side> / <body>."* It returns the URL.
-- **Skip** — move to the next issue.
-- **Something else** — follow the user's instruction.
+  Also offer: Skip / Something else.
+- **If the issue IS already flagged** → recommend **Skip** (don't double-flag —
+  especially when the existing thread is resolved or the code shows it was addressed;
+  say which). Also offer: Post anyway (e.g. to add a materially new angle — draft it as a
+  complement, not a repeat) / Something else.
 
 ## G7 — Repeat & finish
 Continue until every issue is addressed or skipped. Present a final table (issue →

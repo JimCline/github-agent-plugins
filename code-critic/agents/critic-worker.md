@@ -107,6 +107,15 @@ comment, one commit — then stop.
 - Return: `{ ok, worktree_path, branch, head_sha, base_ref }` — each value taken from
   real command output (`head_sha` from `git -C <path> rev-parse HEAD`).
 
+**EXISTING-COMMENTS** (GitHub PR flow) — list the review threads already on the PR so the
+orchestrator can avoid double-flagging:
+- `pull_request_read (method: get_review_comments, pullNumber: N)` — returns threads with
+  `isResolved`/`isOutdated` natively. Fallback: `gh api graphql` reviewThreads query.
+- Return a compact list, one entry per thread: `path`, `line`, `author`, root comment
+  `body` (verbatim, trimmed to a few lines), `isResolved`, `isOutdated`, `thread_id`.
+  Every field copied from the actual response — include ALL threads (resolved too; the
+  orchestrator needs them to detect already-addressed issues).
+
 **COMMENT** (GitHub PR flow) — post ONE inline review comment the orchestrator hands you
 (exact `path`, `line`/`startLine`, `side`, `body`):
 - MCP flow: `pull_request_review_write (method: create)` to open a pending review →

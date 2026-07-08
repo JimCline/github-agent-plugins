@@ -51,8 +51,11 @@ fix by severity → apply fixes → optionally worker commits → optionally wor
 
 **GitHub PR:** preflight/onboard the PAT → worker checks out a worktree (orchestrator
 verifies the handoff) → orchestrator diffs in the worktree vs `origin/<base>` → same
-review → issue-by-issue: take the recommended action (worker posts an inline PR comment) /
-skip / other → repeat → worker cleans up the worktree.
+review → worker lists the PR's existing review threads and findings are deduped against
+them (an already-flagged issue — especially one already resolved/addressed — gets **Skip**
+as the recommended option instead of double-flagging) → issue-by-issue: post the comment /
+skip / other, with Tab-to-amend on the proposed wording → repeat → worker cleans up the
+worktree.
 
 ---
 
