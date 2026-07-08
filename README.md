@@ -4,6 +4,8 @@
 
 > **Not a code-review tool** — it doesn't critique your code. It works through the review
 > threads reviewers *already opened*: assess each, reply, fix or reject, and resolve.
+> For *authoring* an adversarial review of a local diff or a GitHub PR, this repo ships a
+> sibling plugin: **[code-critic](code-critic/README.md)** (`/code-critic`).
 
 It does this with a clean split of labor:
 
@@ -40,11 +42,13 @@ model is never spent driving a tool it doesn't need.
 claude --plugin-dir /path/to/resolve-pr-comments
 ```
 
-**From this repo** — it doubles as a single-plugin marketplace (via `.claude-plugin/marketplace.json`). In Claude Code:
+**From this repo** — it doubles as a marketplace (via `.claude-plugin/marketplace.json`)
+carrying both plugins. In Claude Code:
 
 ```
 /plugin marketplace add JimCline/resolve-pr-comments
 /plugin install resolve-pr-comments@jimcline
+/plugin install code-critic@jimcline          # optional sibling: adversarial PR/diff review
 ```
 
 Enabling the plugin auto-loads its command (`/resolve-pr-comments`), the `pr-comments`
