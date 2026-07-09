@@ -100,12 +100,17 @@ comment, one commit — then stop.
 ## Task playbook
 
 **WORKTREE** (GitHub PR flow) — check out the PR branch in isolation:
-- `git fetch origin pull/<N>/head:cc-pr-<N> && git worktree add <path> cc-pr-<N>`
-  (or `gh pr checkout <N>` inside a fresh worktree). Determine the PR's base branch
-  (`gh pr view <N> --json baseRefName` or `pull_request_read (method: get)`), then
-  `git fetch origin <base>` so the orchestrator can diff against a CURRENT base.
+- **The orchestrator supplies the EXACT absolute worktree path** (default:
+  `<repo>/.claude/worktrees/pr-<N>`). Create the worktree at that path and NOWHERE else —
+  never choose, adjust, or invent a location. If the task did not include a path, do
+  nothing and return `ok: false, error: "no worktree path supplied"`.
+- `git fetch origin pull/<N>/head:cc-pr-<N> && git worktree add <path> cc-pr-<N>`.
+  Determine the PR's base branch (`gh pr view <N> --json baseRefName` or
+  `pull_request_read (method: get)`), then `git fetch origin <base>` so the orchestrator
+  can diff against a CURRENT base.
 - Return: `{ ok, worktree_path, branch, head_sha, base_ref }` — each value taken from
-  real command output (`head_sha` from `git -C <path> rev-parse HEAD`).
+  real command output (`head_sha` from `git -C <path> rev-parse HEAD`; `worktree_path`
+  must equal the supplied path).
 
 **EXISTING-COMMENTS** (GitHub PR flow) — list the review threads already on the PR so the
 orchestrator can avoid double-flagging:

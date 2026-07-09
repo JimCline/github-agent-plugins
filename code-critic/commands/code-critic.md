@@ -35,7 +35,8 @@ repo each hold their own lock:
 — but if `$CLAUDE_CODE_SESSION_ID` is empty/unset, arm the bare fallback instead
 (`touch "$PWD/.git/code-critic.lock"`, which blocks all sessions). While arming, also
 clean up stale locks from crashed runs (`find "$PWD/.git" -maxdepth 1 -name 'code-critic*.lock' -mmin +480 -delete`)
-and note any stale code-critic worktrees for cleanup.
+and check `.claude/worktrees/` for leftover worktrees from crashed runs (offer to have the
+worker clean them up).
 **Run the arming command yourself from the repo root** so `$PWD/.git` matches the path the
 guard checks. On EVERY exit path (success, abort, or error) you MUST remove the lock YOU
 armed (the session-named one — or the bare `code-critic.lock` only if you armed the
@@ -120,11 +121,23 @@ options (official Docker/native, classic npx, or GitHub-hosted remote). Note the
 **Metadata: Read, Pull requests: Read & write, Contents: Read** (Contents is required for
 the worktree checkout — this is broader than resolve-pr-comments' PAT). Re-run G0 after.
 
-## G1 — Worktree checkout (delegated)
-Delegate to `critic-worker`: *"WORKTREE task — check out PR #N into an isolated worktree;
-return path, branch, head_sha, and the PR's base branch."* Verify the handoff yourself:
-`git -C <path> log -1` matches `head_sha`. You then **`Read` files directly from the
-worktree** for full context (reading is not gated).
+## G1 — Worktree checkout (delegated, at a location the USER controls)
+**G1.1 Choose the worktree location.** Ask (AskUserQuestion; remind about Tab-to-amend):
+- **`.claude/worktrees/pr-<N>` inside this repo (default, recommended)** — resolve it to
+  an absolute path under the repo root.
+- **Somewhere else** — let them give a path.
+If the default is chosen, make sure git ignores it locally (no commit needed): append
+`.claude/worktrees/` to `.git/info/exclude` if not already present.
+
+**G1.2 Delegate with the EXACT path.** Delegate to `critic-worker`: *"WORKTREE task —
+check out PR #N into a worktree at EXACTLY `<absolute path>`; return path, branch,
+head_sha, and the PR's base branch."* The worker must never choose its own location.
+
+**G1.3 Verify the handoff yourself:** the returned `worktree_path` equals the path you
+specified, and `git -C <path> log -1` matches `head_sha`. If the path differs, treat it as
+a failed task: have the worker remove the stray worktree and redo it at the right path.
+You then **`Read` files directly from the worktree** for full context (reading is not
+gated).
 
 ## G2 — Generate the diffs (yourself, in the worktree)
 As in L2, with your own read-only git inside the worktree:

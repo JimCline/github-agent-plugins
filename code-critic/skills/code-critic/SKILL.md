@@ -42,7 +42,9 @@ choose reviewer (advisor default / main) → adversarial review → severity-ran
 findings with a succinct action each → choose how to work the list (one-by-one / fix all /
 by severity) → apply fixes → optionally worker commits → optionally worker pushes.
 **GitHub PR:** preflight + onboard the `github_pat` (Metadata:Read, Pull requests:R/W,
-Contents:Read) → worker checks out a worktree (verify its handoff) → YOU diff in the
+Contents:Read) → choose the worktree location (default `.claude/worktrees/pr-<N>` in-repo,
+git-excluded locally; user-promptable) → worker checks out a worktree at EXACTLY that path
+(verify its handoff, path included) → YOU diff in the
 worktree vs `origin/<base>` → same review → worker lists existing review threads; dedup —
 findings already flagged (especially if resolved/addressed) get **Skip recommended**
 instead of a comment → issue-by-issue, post comment / skip / other (user can Tab-amend

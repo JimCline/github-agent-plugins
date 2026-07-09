@@ -49,8 +49,10 @@ Or just ask in natural language ("review my local changes", "critique PR 1234") 
 severity-ranked findings, each with a succinct action → choose one-by-one / fix all /
 fix by severity → apply fixes → optionally worker commits → optionally worker pushes.
 
-**GitHub PR:** preflight/onboard the PAT → worker checks out a worktree (orchestrator
-verifies the handoff) → orchestrator diffs in the worktree vs `origin/<base>` → same
+**GitHub PR:** preflight/onboard the PAT → choose the worktree location (default:
+`.claude/worktrees/pr-<N>` inside the repo, excluded via `.git/info/exclude`; or a path
+you pick) → worker checks out a worktree at exactly that path (orchestrator verifies the
+handoff, path included) → orchestrator diffs in the worktree vs `origin/<base>` → same
 review → worker lists the PR's existing review threads and findings are deduped against
 them (an already-flagged issue — especially one already resolved/addressed — gets **Skip**
 as the recommended option instead of double-flagging) → issue-by-issue: post the comment /

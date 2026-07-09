@@ -1,6 +1,6 @@
 {
   "name": "code-critic",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Adversarial code review of a local diff or a GitHub PR. A high-reasoning orchestrator (or the advisor) does the review, then delegates ALL GitHub and outbound-git actions to a Haiku critic-worker. It reviews AND acts — fixes locally, or posts inline review comments on the PR. Companion to resolve-pr-comments (which resolves reviewer comments; this one authors the review).",
   "author": {
     "name": "Jim Cline"
