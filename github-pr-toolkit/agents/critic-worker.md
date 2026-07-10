@@ -38,9 +38,10 @@ tools: >-
   mcp__plugin_context-mode_context-mode__ctx_batch_execute,
   mcp__plugin_context-mode_context-mode__ctx_fetch_and_index
 
-# THE SERVER lives in this plugin's `.mcp.json` (GitHub's hosted MCP via the
-# mcp-remote stdio bridge, PAT from `${user_config.github_pat}`). It is NOT
-# declared here: Claude Code silently drops `mcpServers` in PLUGIN agent
+# THE SERVER lives in this plugin's `.mcp.json` — a DIRECT connection to GitHub's
+# hosted MCP server (type http, `Authorization: Bearer ${user_config.github_pat}`;
+# plugin config substitutes user_config into headers, unlike project .mcp.json).
+# It is NOT declared here: Claude Code silently drops `mcpServers` in PLUGIN agent
 # frontmatter (verified on 2.1.206 — no spawn, no mcp-logs dir, tools report
 # "No such tool available"). Because a plugin .mcp.json server is
 # session-visible, the delegation gate is enforced by hooks/guard.mjs instead:

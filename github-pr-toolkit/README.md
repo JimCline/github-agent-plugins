@@ -29,8 +29,7 @@ model is never spent driving a tool it doesn't need. This documentation covers s
 | Requirement | Why | Notes |
 |---|---|---|
 | **Claude Code** (recent) | Plugin MCP server, subagents, PreToolUse hooks | Verified on **v2.1.206** |
-| **A GitHub MCP server** | The workers' actual GitHub tools | Default = **GitHub's hosted remote MCP**, reached via the `mcp-remote` stdio bridge defined in the plugin's `.mcp.json`. Local alternative below |
-| **`npx` (Node)** *(for the default server)* | Runs the `mcp-remote` bridge | Already present if you installed Claude Code via npm; else `brew install node`. Skip only if you switch `.mcp.json` to a local server (Docker / native binary) |
+| **A GitHub MCP server** | The workers' actual GitHub tools | Default = **GitHub's hosted remote MCP**, connected directly from the plugin's `.mcp.json` with the PAT as a Bearer header — nothing to install or run locally. Local alternative below |
 | **A GitHub Personal Access Token (PAT)** | Authenticates the worker's GitHub API calls | **See [GitHub token requirements](#github-token-requirements)** — this is the main setup step |
 | **Git push access to the repo** | The orchestrator commits & pushes your fixes | Uses your normal git auth (SSH or credential helper), **separate** from the PAT |
 | **`gh` CLI** *(optional)* | Fallback for servers lacking native thread ops | `gh auth login`; uses its own auth |
@@ -59,9 +58,10 @@ claude --plugin-dir /path/to/github-agent-plugins/github-pr-toolkit
 > (with the superset scopes below).
 
 Enabling the plugin auto-loads both commands (`/resolve-pr-comments`, `/code-critic`),
-their same-named skills, the doctor, and both worker agents. No `.mcp.json` changes are
-needed — the GitHub MCP server is scoped **inside** each worker (see
-[How the gate works](#how-the-gate-works)).
+their same-named skills, the doctor, both worker agents, the plugin's GitHub MCP server
+(from its own `.mcp.json` — nothing for you to configure), and the guard hook that
+restricts that server's tools to the workers (see
+[How the gate works](#how-the-gate-works)). After an update, run `/reload-plugins`.
 
 ### 2. Create a GitHub PAT
 
@@ -79,8 +79,8 @@ both commands and both workers share it**. It's stored in your **OS keychain** �
 it can't clash with your other GitHub tooling.
 
 Change it anytime via **`/plugin` → `github-pr-toolkit` → Configure**. Under the hood
-the plugin's `.mcp.json` reads it as `${user_config.github_pat}` and the `mcp-remote`
-bridge sends it to GitHub's hosted server as a Bearer header. **Known Claude Code issue
+the plugin's `.mcp.json` reads it as `${user_config.github_pat}` and sends it to
+GitHub's hosted server as a Bearer header. **Known Claude Code issue
 ([#62442](https://github.com/anthropics/claude-code/issues/62442)):** sensitive config
 values can be lost on restart or upgrade — if GitHub access suddenly breaks, re-enter
 the PAT here first.
@@ -89,31 +89,30 @@ You don't have to get this perfect up front — running `/resolve-pr-comments` h
 GitHub access first and, if it fails (the most common cause is a missing token), **walks
 you through the setup**.
 
-### 4. Choose the GitHub MCP server runtime *(optional — the hosted default needs only `npx`)*
+### 4. Choose the GitHub MCP server runtime *(optional — the hosted default needs nothing installed)*
 
 The server is defined in the **plugin's `.mcp.json`** (not in the agent files — Claude
-Code silently drops `mcpServers` declared in plugin agent frontmatter). The default
-connects to **GitHub's hosted remote MCP server** through the `mcp-remote` stdio
-bridge, with the PAT flowing keychain → env → bridge → Bearer header:
+Code silently drops `mcpServers` declared in plugin agent frontmatter). The default is
+a **direct connection to GitHub's hosted remote MCP server**, with the PAT flowing
+keychain → Bearer header:
 
 ```json
 {
   "mcpServers": {
     "github": {
-      "command": "sh",
-      "args": ["-c", "exec npx -y mcp-remote https://api.githubcopilot.com/mcp/x/pull_requests --header \"Authorization: Bearer $GITHUB_PAT\" --transport http-only"],
-      "env": { "GITHUB_PAT": "${user_config.github_pat}" }
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/x/pull_requests",
+      "headers": { "Authorization": "Bearer ${user_config.github_pat}" }
     }
   }
 }
 ```
 
-**Why the bridge instead of a direct `type: http` + `headers` entry:** Claude Code
-does not substitute `${user_config.*}` into HTTP `headers:` values
-([claude-code#51581](https://github.com/anthropics/claude-code/issues/51581) — the
-header is sent literally) and `headersHelper` is unreliable (#41690, #48514, #72808);
-env substitution into a stdio command is dependable. The `/x/pull_requests` URL path
-narrows the server to only the pull-request toolset — see
+(Plugin `.mcp.json` configs DO substitute `${user_config.*}` into `headers` — verified
+live; the substitution bug
+[claude-code#51581](https://github.com/anthropics/claude-code/issues/51581) affects
+project-level `.mcp.json`, not this path.) The `/x/pull_requests` URL path narrows the
+server to only the pull-request toolset — see
 [Narrowing the MCP surface](#narrowing-the-mcp-surface-applied-by-default).
 
 Local alternative (edit `.mcp.json`; same env var, same tool names): run the official
@@ -313,8 +312,8 @@ walks you through the fix and re-probes.
   server never connected. Most common cause: the `github_pat` config is empty —
   **sensitive config values can be lost on Claude Code restart or upgrade
   ([#62442](https://github.com/anthropics/claude-code/issues/62442))** — re-enter the
-  PAT via `/plugin` → `github-pr-toolkit` → Configure. Then check `npx` exists (the
-  bridge needs Node) and network to `api.githubcopilot.com`.
+  PAT via `/plugin` → `github-pr-toolkit` → Configure. Then check network to
+  `api.githubcopilot.com`.
 - **`permissions … haven't granted` from a worker.** The plugin's guard hook isn't
   loaded — run `/reload-plugins` or restart the session.
 - **Health-check fails / auth error (401/403).** The PAT is invalid, expired, or

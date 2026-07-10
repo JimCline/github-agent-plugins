@@ -4,8 +4,8 @@ argument-hint: "[PR number to probe with — optional]"
 ---
 
 You are diagnosing the **github-pr-toolkit** plugin's GitHub wiring. The GitHub MCP
-server is defined in the plugin's `.mcp.json` — GitHub's hosted server reached through
-the `mcp-remote` stdio bridge, PAT from the plugin's `github_pat` config. Its tools are
+server is defined in the plugin's `.mcp.json` — a direct connection to GitHub's hosted
+server, PAT from the plugin's `github_pat` config as a Bearer header. Its tools are
 namespaced `mcp__plugin_github-pr-toolkit_github__*`, and a guard hook denies them to
 you (the main agent) while granting them to the two worker subagents — so the only way
 to probe is through the workers. Do that now, narrowly (do NOT arm the code-critic
@@ -37,21 +37,15 @@ review lock — this is not a review):
      Most common: the `github_pat` config is empty/unset — sensitive config values can
      be LOST on Claude Code restart or upgrade (claude-code#62442), so have them
      re-enter it via **`/plugin` → github-pr-toolkit → Configure**, then re-run this
-     doctor. Next: `npx`/Node missing (`which npx` — the bridge needs it), then no
-     network to `api.githubcopilot.com` (check
-     `curl -sI https://api.githubcopilot.com/mcp/` yourself). Do NOT suggest a direct
-     `type: http` + headers config (Claude Code doesn't substitute secrets into
-     headers — claude-code#51581) and do NOT suggest moving the server into agent
-     frontmatter (plugin agents' `mcpServers` blocks are silently dropped — that's why
-     it lives in `.mcp.json`).
+     doctor. Next: no network to `api.githubcopilot.com` (check
+     `curl -sI https://api.githubcopilot.com/mcp/` yourself). Do NOT suggest moving
+     the server into agent frontmatter — plugin agents' `mcpServers` blocks are
+     silently dropped; that's why it lives in `.mcp.json`.
    - `mcp: failed — <401/403/auth error>` → the server responded but the PAT is
      invalid/expired or under-scoped (needs Metadata: Read + Pull requests: Read &
      write + Contents: Read — one PAT covers both workers).
-   - Error mentions `Incompatible auth server` / `does not support dynamic client
-     registration` → a bad-PAT error in disguise: GitHub returned 401 and the
-     mcp-remote bridge's OAuth fallback died. Ignore the OAuth wording — fix the PAT.
-     `Authorization header is badly formatted` → the PAT value itself is malformed
-     (empty/truncated) — re-enter it.
+   - `Authorization header is badly formatted` → the PAT value itself is malformed
+     (empty/truncated/unsubstituted) — re-enter it via Configure.
    - `mcp: failed — … permissions … haven't granted` → the guard hook's worker grant
      isn't active (plugin hooks not loaded) — have them run `/reload-plugins` or
      restart the session, and confirm the plugin is enabled.
@@ -65,9 +59,8 @@ review lock — this is not a review):
      github-pr-toolkit → Configure**, paste a fine-grained PAT (Metadata: Read + Pull
      requests: Read & write + Contents: Read; offer to walk through creating one at
      GitHub → Settings → Developer settings → Fine-grained tokens), and say when done.
-     Then check `which npx` and network reachability of `api.githubcopilot.com`
-     yourself; if `npx` is missing, walk them through installing Node
-     (`brew install node`, or nodejs.org). If they can't use the hosted server at all,
+     Then check network reachability of `api.githubcopilot.com` yourself. If they
+     can't use the hosted server at all,
      help edit the plugin's `.mcp.json` to run the official server locally instead
      (Docker: `docker run -i --rm -e GITHUB_PERSONAL_ACCESS_TOKEN -e
      GITHUB_TOOLSETS=pull_requests ghcr.io/github/github-mcp-server`, or the native

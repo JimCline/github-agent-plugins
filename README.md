@@ -33,12 +33,12 @@ write, Contents: Read** — see the [plugin README](github-pr-toolkit/README.md#
 
 ## Requirements (common)
 
-- **Claude Code** with subagent `mcpServers` + `permissionMode` frontmatter support
-  (verified on v2.1.197+).
-- **A GitHub MCP server** — default: **GitHub's hosted remote MCP**, reached through
-  the `mcp-remote` stdio bridge defined in the plugin's `.mcp.json` (needs only `npx`;
-  the PAT flows keychain → env → Bearer header). Local alternative: edit `.mcp.json`
-  to run the official server via Docker or the native binary.
+- **Claude Code** (recent) — plugin MCP servers, subagents, PreToolUse hooks
+  (verified on v2.1.206).
+- **A GitHub MCP server** — default: **GitHub's hosted remote MCP**, connected
+  directly from the plugin's `.mcp.json` (PAT flows keychain → Bearer header; nothing
+  to install or run locally). Local alternative: edit `.mcp.json` to run the official
+  server via Docker or the native binary.
 - **`gh` CLI** *(optional)* — gated fallback for servers lacking a native capability.
 
 ## Architecture (shared)

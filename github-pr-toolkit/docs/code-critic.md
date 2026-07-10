@@ -22,13 +22,14 @@ Same clean split of labor as /resolve-pr-comments:
   `git commit`/`push`. It hands back short, verifiable results that the orchestrator
   cross-checks against local git.
 
-A **PreToolUse guard hook** enforces the split for the duration of a review: it blocks the
-main agent from `mcp__github__*`, `gh`, and remote-mutating git (`push`/`commit`/`pull`/
-`worktree`) and tells it to delegate; `git fetch` and read-only git stay allowed. The
-guard is inert outside an active review and **scoped to the initiating session**: the
-self-healing lock file is *named* after that session
-(`.git/code-critic-<session_id>.lock`), so other Claude Code sessions in the same repo are
-never blocked — and two concurrent reviews each hold their own lock.
+A **PreToolUse guard hook** enforces the split. The plugin's GitHub MCP tools
+(`mcp__plugin_github-pr-toolkit_github__*`) are **always** denied to the main agent and
+granted to the workers. The Bash rules — `gh` and remote-mutating git
+(`push`/`commit`/`pull`/`worktree`) blocked, `git fetch` and read-only git allowed —
+apply only for the duration of a review and are **scoped to the initiating session**:
+the self-healing lock file is *named* after that session
+(`.git/code-critic-<session_id>.lock`), so other Claude Code sessions in the same repo
+are never blocked — and two concurrent reviews each hold their own lock.
 
 ---
 
@@ -73,8 +74,8 @@ per finding — and the PR gets one review event instead of N single-comment rev
 ## Requirements
 
 Same as the rest of the toolkit (recent Claude Code; the GitHub MCP server is GitHub's
-hosted remote, reached via the `mcp-remote` bridge in the plugin's `.mcp.json` — needs
-only `npx`; `gh` optional). The PAT scope `/code-critic` specifically needs beyond
+hosted remote, connected directly from the plugin's `.mcp.json` — nothing to install;
+`gh` optional). The PAT scope `/code-critic` specifically needs beyond
 `/resolve-pr-comments`:
 
 | Fine-grained PAT scope | Why |
@@ -85,8 +86,8 @@ only `npx`; `gh` optional). The PAT scope `/code-critic` specifically needs beyo
 
 Set the token in **`/plugin` → `github-pr-toolkit` → Configure** (stored in your OS
 keychain as `github_pat`) — **once for the whole toolkit**; both commands share it.
-**Re-enter it after plugin upgrades** — config values may not carry forward, and an
-empty PAT surfaces as `No such tool available: mcp__github__*` (the worker's inline
-server never connects). Run **`/github-pr-toolkit:doctor`** to verify the MCP wiring
-for both workers without starting a review — the inline servers are invisible to
-`claude mcp list` by design, so the doctor is the way to sanity-check them.
+**Re-enter it after Claude Code restarts or plugin upgrades if GitHub access breaks**
+(sensitive config values can be lost — claude-code#62442); an empty PAT surfaces as
+`No such tool available: mcp__plugin_github-pr-toolkit_github__*`. Run
+**`/github-pr-toolkit:doctor`** to verify the MCP wiring for both workers without
+starting a review.

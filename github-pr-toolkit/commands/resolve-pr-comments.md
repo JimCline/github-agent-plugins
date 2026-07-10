@@ -85,11 +85,11 @@ instead of banning tools.
 If the return contains a `via: gh` line or anything besides the exact `ok`, the health
 check FAILED regardless of what the worker claims — a gh fallback here means the MCP
 path is broken. `failed: No such tool available: …` means the plugin's server (defined
-in its `.mcp.json`: GitHub's hosted MCP via the `mcp-remote` bridge) never connected;
+in its `.mcp.json`: a direct connection to GitHub's hosted MCP) never connected;
 likely causes in order: an empty/unset `github_pat` (sensitive config values can be
 LOST on Claude Code restart or upgrade — claude-code#62442 — have the user re-enter the
-PAT via `/plugin` → github-pr-toolkit → Configure), `npx`/Node missing (the bridge
-needs it), no network to `api.githubcopilot.com`. A `permissions … haven't granted`
+PAT via `/plugin` → github-pr-toolkit → Configure), no network to
+`api.githubcopilot.com`. A `permissions … haven't granted`
 failure means the plugin's guard hook isn't loaded — `/reload-plugins` or restart.
 
 Thereafter, watch every worker return for a `via: gh (mcp error: …)` line — that means
@@ -101,9 +101,9 @@ the 0.2 onboarding; don't let a degraded setup ride silently on the fallback.
   `github_pat` config (OS keychain), NOT an env var, so guide the user to set it via
   **`/plugin` → `github-pr-toolkit` → Configure** (or the install dialog). Then explain the
   server options and help set up whichever they pick:
-  - **(a) GitHub's hosted remote MCP via the `mcp-remote` bridge** (the default,
-    defined in the plugin's `.mcp.json`) — PAT flows keychain → env → bridge header;
-    needs only `npx`.
+  - **(a) GitHub's hosted remote MCP, direct** (the default, defined in the plugin's
+    `.mcp.json`) — PAT flows keychain → Bearer header; nothing to install or run
+    locally.
   - **(b) Official `github/github-mcp-server` run locally** (Docker or native binary,
     same env var and tool names) — edit the plugin's `.mcp.json` to swap the command.
   Walk them through: creating a fine-grained PAT (Metadata: Read, Pull requests: Read &

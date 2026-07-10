@@ -155,10 +155,10 @@ State what success means instead of banning tools.
 If the return contains a `via: gh` line or anything besides the exact `ok`, the health
 check FAILED regardless of the worker's claim. `failed: No such tool available:
 mcp__plugin_github-pr-toolkit_github__*` means the plugin's server (its `.mcp.json`:
-GitHub's hosted MCP via the `mcp-remote` bridge) never connected — most commonly an
+a direct connection to GitHub's hosted MCP) never connected — most commonly an
 empty/unset `github_pat` (sensitive config values can be LOST on Claude Code restart or
 upgrade — claude-code#62442; re-enter via `/plugin` → github-pr-toolkit → Configure),
-then `npx`/Node missing, or no network to `api.githubcopilot.com`. A `permissions …
+then no network to `api.githubcopilot.com`. A `permissions …
 haven't granted` failure means the plugin's guard hook isn't loaded —
 `/reload-plugins` or restart. Thereafter, watch worker returns
 for a `via: gh (mcp error: …)` line — the MCP path failed mid-run; surface it to the
@@ -167,9 +167,9 @@ If it fails →
 **ONBOARDING**: the GitHub MCP server isn't configured/reachable — usually an unset PAT.
 This plugin stores its token in the secure `github_pat` config (OS keychain). Guide the
 user to set it via **`/plugin` → `github-pr-toolkit` → Configure**, and explain the server
-options (default: GitHub's hosted remote MCP via the `mcp-remote` bridge, defined in
-the plugin's `.mcp.json` — needs only `npx`; alternative: the official server locally
-via Docker or native binary, by editing that `.mcp.json`). Note the PAT needs
+options (default: GitHub's hosted remote MCP, direct, defined in the plugin's
+`.mcp.json` — nothing to install; alternative: the official server locally via Docker
+or native binary, by editing that `.mcp.json`). Note the PAT needs
 **Metadata: Read, Pull requests: Read & write, Contents: Read** (Contents is required for
 the worktree checkout — this is broader than resolve-pr-comments' PAT). Re-run G0 after.
 
