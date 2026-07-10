@@ -85,12 +85,12 @@ instead of banning tools.
 If the return contains a `via: gh` line or anything besides the exact `ok`, the health
 check FAILED regardless of what the worker claims — a gh fallback here means the MCP
 path is broken. `failed: No such tool available: mcp__github__*` means the inline
-server never connected; likely causes in order: an empty/unset `github_pat` (plugin
-config values may not survive plugin upgrades — have the user re-enter the PAT via
-`/plugin` → github-pr-toolkit → Configure), no network to `api.githubcopilot.com`, a
-Claude Code build that won't substitute a sensitive user_config into inline headers
-(use the `headersHelper` fallback commented in `agents/github-worker.md`) — or, if
-they switched to a local-server alternative, Docker/the binary not available.
+server never connected; likely causes in order: an empty/unset `github_pat` (sensitive
+config values can be LOST on Claude Code restart or upgrade — claude-code#62442 — have
+the user re-enter the PAT via `/plugin` → github-pr-toolkit → Configure), `npx`/Node
+missing (the default reaches the hosted server through the `mcp-remote` stdio bridge),
+no network to `api.githubcopilot.com` — or, if they switched to a local-server
+alternative, Docker/the binary not available.
 
 Thereafter, watch every worker return for a `via: gh (mcp error: …)` line — that means
 the MCP path failed mid-run and the worker fell back. Surface it to the user and offer
@@ -102,7 +102,7 @@ the 0.2 onboarding; don't let a degraded setup ride silently on the fallback.
   **`/plugin` → `github-pr-toolkit` → Configure** (or the install dialog). Then explain the
   server options and help set up whichever they pick:
   - **(a) GitHub's hosted remote MCP** (the default) — the official server run by
-    GitHub, PAT sent as a Bearer header, nothing to install or run locally.
+    GitHub, PAT sent as a Bearer header via the `mcp-remote` stdio bridge — needs only `npx`.
   - **(b) Official `github/github-mcp-server` run locally** (Docker or native binary) +
     the same PAT — for offline/self-hosted preferences; commented alternatives in
     `agents/github-worker.md`.

@@ -33,14 +33,16 @@ narrowly (do NOT arm the code-critic review lock — this is not a review):
    - `mcp: ok` on both → the hosted server, PAT, and both inline configs are healthy.
    - `mcp: failed — No such tool available: mcp__github__*` → that worker's inline
      server never connected. Most common: the plugin's `github_pat` config is
-     empty/unset — config values may not survive plugin upgrades, so have them
-     re-enter it via **`/plugin` → github-pr-toolkit → Configure**, then re-run this
-     doctor. Next: no network to `api.githubcopilot.com` (the default server is
-     GitHub's hosted remote — check `curl -sI https://api.githubcopilot.com/mcp/`
-     yourself), or a Claude Code build that doesn't substitute sensitive user_config
-     into inline headers (see the `headersHelper` fallback comment in the worker's
-     agent file). If they switched a worker to a local-server alternative, also check
-     Docker (`docker ps`) or the `github-mcp-server` binary.
+     empty/unset — sensitive config values can be LOST on Claude Code restart or
+     upgrade (claude-code#62442), so have them re-enter it via **`/plugin` →
+     github-pr-toolkit → Configure**, then re-run this doctor. Next: `npx`/Node
+     missing (`which npx` — the default reaches the hosted server through the
+     `mcp-remote` stdio bridge), then no network to `api.githubcopilot.com` (check
+     `curl -sI https://api.githubcopilot.com/mcp/` yourself). If they switched a
+     worker to a local-server alternative, also check Docker (`docker ps`) or the
+     `github-mcp-server` binary. Do NOT suggest the direct `type: http` + headers
+     config — Claude Code doesn't substitute secrets into headers (claude-code#51581);
+     that's why the bridge exists.
    - `mcp: failed — <401/403/auth error>` → the server responded but the PAT is
      invalid/expired or under-scoped (needs Metadata: Read + Pull requests: Read &
      write + Contents: Read — one PAT covers both workers).
@@ -54,10 +56,13 @@ narrowly (do NOT arm the code-critic review lock — this is not a review):
      github-pr-toolkit → Configure**, paste a fine-grained PAT (Metadata: Read + Pull
      requests: Read & write + Contents: Read; offer to walk through creating one at
      GitHub → Settings → Developer settings → Fine-grained tokens), and say when done.
-     Then check network reachability of `api.githubcopilot.com` yourself. If both are
-     fine, apply the `headersHelper` fallback commented in the agent files, or offer
-     the local-server alternatives (Docker / native binary) and help edit the
-     `mcpServers` blocks.
+     Then check `which npx` and network reachability of `api.githubcopilot.com`
+     yourself. If `npx` is missing, offer to walk them through installing Node
+     (`brew install node`, or nodejs.org) — that's all the bridge needs — or, if they
+     don't want Node, switch the worker to a local-server alternative (Docker /
+     native binary, commented in the agent files). If everything checks out and it
+     still fails, offer the local-server alternatives and help edit the `mcpServers`
+     blocks.
    - **Auth error (401/403)** → the PAT is invalid, expired, or under-scoped — help
      them mint a correct one and re-enter it via Configure.
    - After EACH fix, re-dispatch the failing probe(s) to verify. Finish by reporting

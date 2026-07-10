@@ -155,11 +155,11 @@ State what success means instead of banning tools.
 If the return contains a `via: gh` line or anything besides the exact `ok`, the health
 check FAILED regardless of the worker's claim. `failed: No such tool available:
 mcp__github__*` means the inline server never connected — most commonly an empty/unset
-`github_pat` (config values may not survive plugin upgrades; re-enter via `/plugin` →
-github-pr-toolkit → Configure), then no network to `api.githubcopilot.com`, a build that
-won't substitute a sensitive user_config into inline headers (`headersHelper` fallback
-commented in `agents/critic-worker.md`), or — on a local-server alternative — Docker/
-the binary missing. Thereafter, watch worker returns
+`github_pat` (sensitive config values can be LOST on Claude Code restart or upgrade —
+claude-code#62442; re-enter via `/plugin` → github-pr-toolkit → Configure), then
+`npx`/Node missing (the default reaches the hosted server through the `mcp-remote`
+stdio bridge), no network to `api.githubcopilot.com`, or — on a local-server
+alternative — Docker/the binary missing. Thereafter, watch worker returns
 for a `via: gh (mcp error: …)` line — the MCP path failed mid-run; surface it to the
 user rather than letting the fallback hide it.
 If it fails →

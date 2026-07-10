@@ -37,7 +37,7 @@ write, Contents: Read** — see the [plugin README](github-pr-toolkit/README.md#
   (verified on v2.1.197+).
 - **A GitHub MCP server** — default: **GitHub's hosted remote MCP**
   (`api.githubcopilot.com/mcp/x/pull_requests`), authenticated with the plugin's PAT as
-  a Bearer header — nothing to install or run locally. Local alternatives (official
+  a Bearer header through the `mcp-remote` stdio bridge (needs only `npx`). Local alternatives (official
   server via Docker or native binary) are commented in each worker's agent file.
 - **`gh` CLI** *(optional)* — gated fallback for servers lacking a native capability.
 

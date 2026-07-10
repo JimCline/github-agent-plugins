@@ -42,34 +42,40 @@ tools: >-
 # globally (.mcp.json / user settings) — if you don't, the main orchestrator never has
 # the connection and physically cannot call GitHub MCP.
 #
-# DEFAULT below = official github/github-mcp-server via Docker. Two alternatives are
-# commented; the /resolve-pr-comments command's preflight will detect a broken setup
-# and walk you through picking + configuring one of these.
+# DEFAULT below = GitHub's hosted server via the mcp-remote stdio bridge. Alternatives
+# are commented; the /resolve-pr-comments command's preflight will detect a broken
+# setup and walk you through picking + configuring one of these.
 mcpServers:
   github:
-    # DEFAULT = GitHub's HOSTED remote MCP server — the official server, run by GitHub,
-    # nothing to install or run locally. Auth is this plugin's PAT sent as a Bearer
-    # header (the hosted server accepts PATs, not just OAuth — that's why this plugin
-    # uses a PAT). The /x/pull_requests URL path narrows the server to ONLY the
-    # pull-request toolset (least privilege). Read-only is NOT set because the worker
-    # must reply to and resolve threads. Tool names are identical to the local server.
-    type: http
-    url: "https://api.githubcopilot.com/mcp/x/pull_requests"
-    headers:
+    # DEFAULT = GitHub's HOSTED remote MCP server (api.githubcopilot.com), reached
+    # through the `mcp-remote` stdio bridge. Why a bridge instead of `type: http` +
+    # `headers`: Claude Code does NOT substitute ${user_config.*}/${VAR} into HTTP
+    # header values (anthropics/claude-code#51581 — the header goes out literally,
+    # so auth fails), and `headersHelper` is unreliable (#41690, #48514, #72808).
+    # Env substitution into a stdio server IS reliable, so the PAT flows: OS keychain
+    # user_config → env var → shell → Authorization header set by the bridge.
+    # The /x/pull_requests URL path narrows the server to ONLY the pull-request
+    # toolset (least privilege). Read-only is NOT set because the worker must reply
+    # to and resolve threads. Tool names identical to the local server's. Needs npx.
+    command: sh
+    args: ["-c", "exec npx -y mcp-remote https://api.githubcopilot.com/mcp/x/pull_requests --header \"Authorization: Bearer $GITHUB_PAT\" --transport http-only"]
+    env:
       # Token comes from this plugin's OWN secure config — plugin.json
-      # `userConfig.github_pat`, stored in your OS keychain. Declared as `userConfig`,
-      # referenced as `user_config`. Set in the install / `/plugin` config dialog.
-      Authorization: "Bearer ${user_config.github_pat}"
-    # Fallback: if your Claude Code build won't substitute a *sensitive* user_config
-    # value into inline headers, delete the `headers` key and generate them from a
-    # DEDICATED host env var instead (still avoids clashing with your other GitHub
-    # tooling):
-    #   headersHelper: sh -c 'printf "{\"Authorization\":\"Bearer %s\"}" "$GITHUB_PR_TOOLKIT_PAT"'
-  # ── Alternative A: official server locally via Docker (the previous default) ──
+      # `userConfig.github_pat`, stored in your OS keychain. Set in the install /
+      # `/plugin` config dialog. KNOWN CLAUDE CODE ISSUE (#62442): sensitive
+      # user_config values can be lost on restart/upgrade — if GitHub access breaks,
+      # re-enter the PAT via /plugin → github-pr-toolkit → Configure.
+      GITHUB_PAT: "${user_config.github_pat}"
+  # ── Alternative A: hosted server DIRECT over type http — cleaner (no bridge), but
+  #    blocked until claude-code#51581 (no substitution into headers) is fixed ──
+  #   type: http
+  #   url: "https://api.githubcopilot.com/mcp/x/pull_requests"
+  #   headers: { Authorization: "Bearer ${user_config.github_pat}" }
+  # ── Alternative B: official server locally via Docker ──
   #   command: docker
   #   args: ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN", "-e", "GITHUB_TOOLSETS=pull_requests", "ghcr.io/github/github-mcp-server"]
   #   env: { GITHUB_PERSONAL_ACCESS_TOKEN: "${user_config.github_pat}" }
-  # ── Alternative B: official server as a native binary (no Docker) ──
+  # ── Alternative C: official server as a native binary (no Docker) ──
   #   command: github-mcp-server
   #   args: ["stdio"]
   #   env: { GITHUB_PERSONAL_ACCESS_TOKEN: "${user_config.github_pat}" }
