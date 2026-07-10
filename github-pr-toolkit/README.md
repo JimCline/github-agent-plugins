@@ -155,14 +155,21 @@ permission-allowed. This is a one-time **user-level** grant in `~/.claude/settin
 
 It's independent of this plugin; skip it if you don't run context-mode.
 
-> **Known interaction:** context-mode's `PreToolUse` hook also appends a ~4.5 KB
-> `<context_window_protection>` routing block to **every** subagent dispatch,
-> unconditionally and with no off switch. Besides the token cost, that block can trip
-> permission auto-classifiers ("keep raw bytes out of the transcript" pattern-matches
-> monitoring evasion), causing a worker dispatch to be rejected. The orchestrator is
-> instructed to re-send a rejected dispatch as a bare minimal task string; batching
-> (one worker per write batch instead of one per thread) also pays this injection once
-> instead of N times.
+> **Known interaction (can block worker dispatches in auto mode):** context-mode's
+> `Agent` hook appends a ~4.5 KB `<context_window_protection>` routing block to
+> **every** subagent dispatch prompt, unconditionally and with no off switch. Claude
+> Code's auto-mode permission classifier evaluates the final dispatch prompt —
+> orchestrator text *plus* that injection — and "route through ctx_* / keep raw bytes
+> out of the transcript" pattern-matches an oversight-evasion signature, so dispatches
+> get rejected as an "Auto-Mode Bypass" **no matter how clean the orchestrator's own
+> prompt is** (re-sending stripped doesn't help; the injection is re-added downstream).
+> context-mode itself never denies anything — its hooks are advisory and fail-open.
+> Fixes, from surgical to blunt: **(a)** remove the single `"Agent"` matcher object
+> from context-mode's `hooks/hooks.json` (stops the injection, keeps the rest of
+> context-mode working; re-check after context-mode updates), **(b)** don't run the
+> toolkit's flows in auto mode while context-mode is enabled, or **(c)** disable
+> context-mode. Batching (one worker per write batch) also shrinks the exposure
+> surface — one classifier evaluation instead of N.
 
 ---
 

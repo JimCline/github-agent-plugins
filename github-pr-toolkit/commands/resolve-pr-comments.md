@@ -16,6 +16,12 @@ pull-request review comments. Follow the steps below in order.
 - **You** do the reasoning, the code fixes, the commits/pushes, and all user
   interaction. Workers are hands, not brains. Hand each worker only the narrow slice it
   needs, never the whole plan.
+- **ASSESS → PRESENT → ASK → only then ACT. Never fix anything before the user
+  approves it.** You make ZERO edits to the working tree (no Edit/Write, no commits)
+  until the user has seen the issues (Step 4's assessment presented in full) and
+  approved the action for that specific thread via the Step 5 selectable options (or
+  explicitly chosen "auto-address all"). Fixing first and asking after is a hard
+  violation — the user decides, you execute.
 
 ## Dispatch discipline (context economy — applies to EVERY worker dispatch)
 
@@ -162,6 +168,9 @@ your working set.
 
 ## Step 4 — Assess, and (if available) consult the advisor
 
+**Assessment only — you change NOTHING in this step.** No edits, no fixes, no
+"quick wins": produce proposals, then present them to the user in Step 5.
+
 For each thread, decide a concrete proposed action:
 - **fix** — a specific code change (name the files/functions and the gist).
 - **reject** — with a crisp rationale to post back to the reviewer.
@@ -187,13 +196,16 @@ your proposed action, and any advisor input, then ask (AskUserQuestion):
 **Discuss** (open-ended; iterate with the user until satisfied, then re-ask).
 Record each thread's final decision and the exact resolution note to post later.
 
-**Post nothing to GitHub in this step.** This step only decides.
+**Post nothing to GitHub and change nothing in the working tree in this step.** This
+step only decides — code changes begin in Step 6, and only for threads the user
+approved here.
 
 ---
 
 ## Step 6 — Implement, commit, push, then confirm
 
-For every thread whose decision is a code **fix**:
+**Entry condition: Step 5 is complete** — every thread has a user decision on record.
+For every thread whose decision is a code **fix** (approved by the user, nothing else):
 - Make the edits in the working tree.
 - Group logically and commit with clear messages that reference the PR/thread.
   Work on the PR's branch (or the project's conventional fixup branch).

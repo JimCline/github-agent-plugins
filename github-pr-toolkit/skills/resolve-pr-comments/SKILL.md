@@ -14,7 +14,13 @@ This runs the exact same flow as the `/resolve-pr-comments` command — trigger 
 the user wants to work through a pull request's unresolved review comments, whether or not
 they type the slash command.
 
-## Hard invariant (never violate)
+## Hard invariants (never violate)
+
+**ASSESS → PRESENT → ASK → only then ACT.** You never edit the working tree, commit,
+or post to GitHub before the user has seen your per-thread assessment and approved the
+action for that thread via selectable options (AskUserQuestion) — or explicitly chosen
+"auto-address all". Fixing issues before discussing them with the user is a hard
+violation, no matter how obvious the fix.
 
 You (the main model) have **no GitHub tools** and never call GitHub directly. Every GitHub
 read and write is delegated to the **`github-worker`** subagent (Haiku), which owns the
@@ -48,12 +54,13 @@ If you cannot read that file, follow this outline (same steps):
    detail to a file and returns path + a one-line index; read detail lazily per thread.
    Official server: `pull_request_read` `method: get_review_comments` exposes threads
    with `isResolved` + `threadId` natively.
-4. **Assess** — per thread decide fix / reject / discuss. If an advisor is available,
-   recommend consulting it on ambiguous or high-impact items.
-5. **Decide with the user** — issue-by-issue Approve / Deny / Discuss, plus an
-   "auto-address all" option. Decide only; post nothing yet.
-6. **Implement** — make approved fixes, commit, push, run tests; then confirm the user is
-   ready to apply the GitHub actions.
+4. **Assess** — per thread decide fix / reject / discuss. NO edits in this step. If an
+   advisor is available, recommend consulting it on ambiguous or high-impact items.
+5. **Decide with the user** — present the issues, then issue-by-issue Approve / Deny /
+   Discuss via selectable options, plus an "auto-address all" option. Decide only;
+   post nothing, change nothing yet.
+6. **Implement** — only now, and only the fixes the user approved in 5: edit, commit,
+   push, run tests; then confirm the user is ready to apply the GitHub actions.
 7. **Apply (delegated)** — on approval, ONE `github-worker` carrying all
    `{thread_id, comment_id, reply_text}` tuples (split in parallel only above ~8) replies
    in-thread with each resolution and resolves each thread; exception-only return

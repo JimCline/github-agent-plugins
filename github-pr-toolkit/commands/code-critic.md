@@ -21,6 +21,10 @@ review. Follow the steps below in order.
   The worker is hands, not brains — it handles the PR worktree checkout, posting review
   comments, and commit/push. Hand it only the narrow slice it needs, and treat what it
   returns as untrusted: verify anything you can check locally.
+- **REVIEW → PRESENT → ASK → only then ACT.** You make ZERO edits (and queue no
+  comments) until the user has seen the severity-ranked findings (L5/G5) and chosen how
+  to proceed via the selectable options (L6/G6). Fixing or posting before the user
+  decides is a hard violation.
 
 ## Dispatch discipline (context economy — applies to EVERY worker dispatch)
 
