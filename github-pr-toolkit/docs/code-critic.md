@@ -72,10 +72,9 @@ per finding — and the PR gets one review event instead of N single-comment rev
 
 ## Requirements
 
-Same as the rest of the toolkit (recent Claude Code; the GitHub MCP server defaults to
-the **official `github/github-mcp-server` via Docker**, PAT via the container env;
-native-binary and hosted-bridge alternatives commented in the agent files; `gh`
-optional). The PAT scope `/code-critic` specifically needs beyond
+Same as the rest of the toolkit (recent Claude Code; the GitHub MCP server is GitHub's
+hosted remote, reached via the `mcp-remote` bridge in the plugin's `.mcp.json` — needs
+only `npx`; `gh` optional). The PAT scope `/code-critic` specifically needs beyond
 `/resolve-pr-comments`:
 
 | Fine-grained PAT scope | Why |

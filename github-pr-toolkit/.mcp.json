@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "github": {
+      "command": "sh",
+      "args": ["-c", "exec npx -y mcp-remote https://api.githubcopilot.com/mcp/x/pull_requests --header \"Authorization: Bearer $GITHUB_PAT\" --transport http-only"],
+      "env": {
+        "GITHUB_PAT": "${user_config.github_pat}"
+      }
+    }
+  }
+}

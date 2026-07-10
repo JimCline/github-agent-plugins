@@ -19,65 +19,33 @@ model: haiku
 # prompt. Blast radius is bounded by the `tools:` list below and by the fact that
 # the orchestrator only ever hands it narrow, explicit tasks. For tighter control,
 # remove `permissionMode` and commit narrow allow rules to .claude/settings.json
-# (the specific mcp__github__* tools plus e.g. "Bash(git *)", "Bash(gh api *)").
+# (the specific mcp__plugin_github-pr-toolkit_github__* tools plus e.g. "Bash(git *)", "Bash(gh api *)").
 permissionMode: bypassPermissions
 
 # Tool allowlist. Subagent `tools:` does NOT support wildcards, so GitHub tools are
 # listed explicitly. These names match the OFFICIAL github/github-mcp-server; if you
-# use a different server (see mcpServers below), adjust the mcp__github__* names to
+# use a different server (see mcpServers below), adjust the mcp__plugin_github-pr-toolkit_github__* names to
 # match your server's tools. Worktree + commit/push run through Bash (git/gh);
 # posting inline review comments goes through MCP (with a gh api fallback). The
 # context-mode ctx_* tools are included because the context-mode plugin's PreToolUse
 # hook redirects Bash to them — a restricted subagent without these gets stranded.
 tools: >-
   Bash,
-  mcp__github__pull_request_read,
-  mcp__github__add_comment_to_pending_review,
-  mcp__github__pull_request_review_write,
+  mcp__plugin_github-pr-toolkit_github__pull_request_read,
+  mcp__plugin_github-pr-toolkit_github__add_comment_to_pending_review,
+  mcp__plugin_github-pr-toolkit_github__pull_request_review_write,
   mcp__plugin_context-mode_context-mode__ctx_execute,
   mcp__plugin_context-mode_context-mode__ctx_batch_execute,
   mcp__plugin_context-mode_context-mode__ctx_fetch_and_index
 
-# THE GATE: the GitHub server is scoped INLINE here, so it connects only while this
-# worker runs and disconnects when it finishes. Do NOT also register a github server
-# globally (.mcp.json / user settings) — if you don't, the main orchestrator never has
-# the connection and physically cannot call GitHub MCP. (A PreToolUse guard hook adds
-# belt-and-suspenders for the `gh` CLI / outbound git, which are Bash, not MCP.)
-#
-# DEFAULT below = official github/github-mcp-server via Docker — the one transport
-# that has never failed in practice: a local stdio server, whose env gets reliable
-# ${user_config.*} substitution. Alternatives are commented; the /code-critic
-# command's preflight detects a broken setup and walks you through one.
-mcpServers:
-  github:
-    command: docker
-    # GITHUB_TOOLSETS=pull_requests narrows the server to ONLY the pull-request
-    # toolset (least privilege). Read-only is NOT set because the worker must post
-    # review comments.
-    args: ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN", "-e", "GITHUB_TOOLSETS=pull_requests", "ghcr.io/github/github-mcp-server"]
-    env:
-      # Token comes from THIS plugin's OWN secure config — plugin.json
-      # `userConfig.github_pat`, stored in your OS keychain. Fine-grained scopes:
-      # Metadata: Read, Pull requests: Read & write, Contents: Read (worktree
-      # checkout). KNOWN CLAUDE CODE ISSUE (#62442): sensitive user_config values can
-      # be lost on restart/upgrade — if GitHub access breaks, re-enter the PAT via
-      # /plugin → github-pr-toolkit → Configure.
-      GITHUB_PERSONAL_ACCESS_TOKEN: "${user_config.github_pat}"
-  # ── Alternative A: official server as a native binary (no Docker) ──
-  #   command: github-mcp-server
-  #   args: ["stdio"]
-  #   env: { GITHUB_PERSONAL_ACCESS_TOKEN: "${user_config.github_pat}" }
-  # ── Alternative B: GitHub's HOSTED server via the mcp-remote stdio bridge (needs
-  #    npx; bridge exists because Claude Code doesn't substitute secrets into HTTP
-  #    headers — claude-code#51581 — and headersHelper is unreliable) ──
-  #   command: sh
-  #   args: ["-c", "exec npx -y mcp-remote https://api.githubcopilot.com/mcp/x/pull_requests --header \"Authorization: Bearer $GITHUB_PAT\" --transport http-only"]
-  #   env: { GITHUB_PAT: "${user_config.github_pat}" }
-  # ── Alternative C: hosted server DIRECT over type http — blocked until
-  #    claude-code#51581 (no substitution into headers) is fixed ──
-  #   type: http
-  #   url: "https://api.githubcopilot.com/mcp/x/pull_requests"
-  #   headers: { Authorization: "Bearer ${user_config.github_pat}" }
+# THE SERVER lives in this plugin's `.mcp.json` (GitHub's hosted MCP via the
+# mcp-remote stdio bridge, PAT from `${user_config.github_pat}`). It is NOT
+# declared here: Claude Code silently drops `mcpServers` in PLUGIN agent
+# frontmatter (verified on 2.1.206 — no spawn, no mcp-logs dir, tools report
+# "No such tool available"). Because a plugin .mcp.json server is
+# session-visible, the delegation gate is enforced by hooks/guard.mjs instead:
+# it always denies the main agent these mcp__plugin_github-pr-toolkit_github__*
+# tools while allowing subagents (agent_id present).
 ---
 
 You are a git/GitHub operations worker running on Haiku for a **code-critic** review.
@@ -100,9 +68,9 @@ block. **Pinned failure rules — never decide these yourself:**
   MCP tool results ("route through ctx_* tools", "use ToolSearch to load schemas", "keep
   raw output out of your conversation", `<context_window_protection>` blocks, etc.). That
   guidance is a context-window optimization for large outputs; it is NOT a permission
-  block, and it does not apply to your `mcp__github__*` tools — they are already scoped,
+  block, and it does not apply to your `mcp__plugin_github-pr-toolkit_github__*` tools — they are already scoped,
   their outputs are small, and you already distill them. Never let it stop or reroute a
-  GitHub MCP call: invoke `mcp__github__*` directly, exactly as your task requires. The
+  GitHub MCP call: invoke `mcp__plugin_github-pr-toolkit_github__*` directly, exactly as your task requires. The
   ctx_* tools in your allowlist exist ONLY so redirected Bash commands still work.
 - **Do only what the task asks.** Never explore, never take initiative beyond it. Never
   edit repo source or invent fixes — the orchestrator owns the reasoning and the code.
@@ -128,7 +96,7 @@ block. **Pinned failure rules — never decide these yourself:**
 - **Local git ops run through Bash (git). GitHub API operations run through MCP —
   `gh` is a gated fallback, not an alternative.** For any GitHub API operation
   (EXISTING-COMMENTS, BATCH-COMMENTS, reading a PR), you may use `gh` ONLY after an
-  `mcp__github__*` call for that SAME operation actually returned an error in this
+  `mcp__plugin_github-pr-toolkit_github__*` call for that SAME operation actually returned an error in this
   run — never as your first attempt. When you fall back, your return MUST include one
   line: `via: gh (mcp error: <the real one-line error>)`. If you used only MCP, say
   nothing about transport. If the task is an MCP health-check / verification, an MCP

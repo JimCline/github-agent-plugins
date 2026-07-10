@@ -69,11 +69,11 @@ title, author, #unresolved — and nothing else."* Show the list and let the use
 
 **0.2 Health-check GitHub access.** Delegate a minimal task to `github-worker`:
 *"MCP health-check task — this verifies the GitHub MCP server + PAT specifically, so
-success means an `mcp__github__*` call succeeded (a `gh` result cannot count as success
-here). Call `mcp__github__list_pull_requests` (or `pull_request_read`) on
-`<owner/repo>`. If the MCP call succeeds, return EXACTLY `ok`. If the `mcp__github__*`
+success means an `mcp__plugin_github-pr-toolkit_github__*` call succeeded (a `gh` result cannot count as success
+here). Call `mcp__plugin_github-pr-toolkit_github__list_pull_requests` (or `pull_request_read`) on
+`<owner/repo>`. If the MCP call succeeds, return EXACTLY `ok`. If the `mcp__plugin_github-pr-toolkit_github__*`
 tools are missing or the call errors, return `failed: <the exact error, verbatim>` —
-e.g. `failed: No such tool available: mcp__github__pull_request_read`. No other text."*
+e.g. `failed: No such tool available: mcp__plugin_github-pr-toolkit_github__pull_request_read`. No other text."*
 
 **Phrase it positively, as above.** Do NOT write dispatch prompts with exclusionary
 wording like "ONLY use X" / "Y is FORBIDDEN": the context-mode plugin injects its own
@@ -84,13 +84,13 @@ instead of banning tools.
 
 If the return contains a `via: gh` line or anything besides the exact `ok`, the health
 check FAILED regardless of what the worker claims — a gh fallback here means the MCP
-path is broken. `failed: No such tool available: mcp__github__*` means the inline
-server never connected; likely causes in order: an empty/unset `github_pat` (sensitive
-config values can be LOST on Claude Code restart or upgrade — claude-code#62442 — have
-the user re-enter the PAT via `/plugin` → github-pr-toolkit → Configure), Docker not
-running (the default runs the official server in a container), the image not pullable
-(network/registry) — or, on the hosted-bridge alternative, `npx` missing / no network
-to `api.githubcopilot.com`.
+path is broken. `failed: No such tool available: …` means the plugin's server (defined
+in its `.mcp.json`: GitHub's hosted MCP via the `mcp-remote` bridge) never connected;
+likely causes in order: an empty/unset `github_pat` (sensitive config values can be
+LOST on Claude Code restart or upgrade — claude-code#62442 — have the user re-enter the
+PAT via `/plugin` → github-pr-toolkit → Configure), `npx`/Node missing (the bridge
+needs it), no network to `api.githubcopilot.com`. A `permissions … haven't granted`
+failure means the plugin's guard hook isn't loaded — `/reload-plugins` or restart.
 
 Thereafter, watch every worker return for a `via: gh (mcp error: …)` line — that means
 the MCP path failed mid-run and the worker fell back. Surface it to the user and offer
@@ -101,15 +101,14 @@ the 0.2 onboarding; don't let a degraded setup ride silently on the fallback.
   `github_pat` config (OS keychain), NOT an env var, so guide the user to set it via
   **`/plugin` → `github-pr-toolkit` → Configure** (or the install dialog). Then explain the
   server options and help set up whichever they pick:
-  - **(a) Official `github/github-mcp-server` via Docker** (the default) — the PAT
-    flows keychain → container env; needs Docker running.
-  - **(b) The same server as a native binary** (no Docker), or **(c) GitHub's hosted
-    remote MCP** via the `mcp-remote` stdio bridge (needs `npx`) — commented
-    alternatives in `agents/github-worker.md`.
-  Walk them through: creating a fine-grained PAT (Metadata: Read, Pull requests: Read & write),
-  pasting it into the plugin's `github_pat` config, and — if they pick a non-default server —
-  editing `agents/github-worker.md`'s `mcpServers` block (and the `mcp__github__*` tool
-  names to match that server). Re-run 0.2 after.
+  - **(a) GitHub's hosted remote MCP via the `mcp-remote` bridge** (the default,
+    defined in the plugin's `.mcp.json`) — PAT flows keychain → env → bridge header;
+    needs only `npx`.
+  - **(b) Official `github/github-mcp-server` run locally** (Docker or native binary,
+    same env var and tool names) — edit the plugin's `.mcp.json` to swap the command.
+  Walk them through: creating a fine-grained PAT (Metadata: Read, Pull requests: Read &
+  write), pasting it into the plugin's `github_pat` config, and — if they pick the
+  local server — editing the plugin's `.mcp.json`. Re-run 0.2 after.
 
 **0.3 Check the `gh` fallback.** Run `gh auth status`. If `gh` is authenticated, workers
 may use `gh api` / `gh api graphql` for operations the MCP server doesn't expose

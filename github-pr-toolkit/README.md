@@ -28,9 +28,9 @@ model is never spent driving a tool it doesn't need. This documentation covers s
 
 | Requirement | Why | Notes |
 |---|---|---|
-| **Claude Code** with subagent `mcpServers` + `permissionMode` frontmatter support | The gate + the Haiku worker rely on these | Verified on **v2.1.197**; use a recent version |
-| **A GitHub MCP server** | The workers' actual GitHub tools | Default = **official `github/github-mcp-server` via Docker**, authenticated with the plugin's PAT via the container env. Alternatives below |
-| **Docker** *(for the default server)* | Runs `ghcr.io/github/github-mcp-server` locally | Skip only if you switch to the native binary or hosted-bridge alternative |
+| **Claude Code** (recent) | Plugin MCP server, subagents, PreToolUse hooks | Verified on **v2.1.206** |
+| **A GitHub MCP server** | The workers' actual GitHub tools | Default = **GitHub's hosted remote MCP**, reached via the `mcp-remote` stdio bridge defined in the plugin's `.mcp.json`. Local alternative below |
+| **`npx` (Node)** *(for the default server)* | Runs the `mcp-remote` bridge | Already present if you installed Claude Code via npm; else `brew install node`. Skip only if you switch `.mcp.json` to a local server (Docker / native binary) |
 | **A GitHub Personal Access Token (PAT)** | Authenticates the worker's GitHub API calls | **See [GitHub token requirements](#github-token-requirements)** — this is the main setup step |
 | **Git push access to the repo** | The orchestrator commits & pushes your fixes | Uses your normal git auth (SSH or credential helper), **separate** from the PAT |
 | **`gh` CLI** *(optional)* | Fallback for servers lacking native thread ops | `gh auth login`; uses its own auth |
@@ -79,8 +79,8 @@ both commands and both workers share it**. It's stored in your **OS keychain** �
 it can't clash with your other GitHub tooling.
 
 Change it anytime via **`/plugin` → `github-pr-toolkit` → Configure**. Under the hood
-each worker's MCP config reads it as `${user_config.github_pat}` and passes it into the
-server container as `GITHUB_PERSONAL_ACCESS_TOKEN`. **Known Claude Code issue
+the plugin's `.mcp.json` reads it as `${user_config.github_pat}` and the `mcp-remote`
+bridge sends it to GitHub's hosted server as a Bearer header. **Known Claude Code issue
 ([#62442](https://github.com/anthropics/claude-code/issues/62442)):** sensitive config
 values can be lost on restart or upgrade — if GitHub access suddenly breaks, re-enter
 the PAT here first.
@@ -89,32 +89,38 @@ You don't have to get this perfect up front — running `/resolve-pr-comments` h
 GitHub access first and, if it fails (the most common cause is a missing token), **walks
 you through the setup**.
 
-### 4. Choose the GitHub MCP server runtime *(optional — the Docker default works out of the box)*
+### 4. Choose the GitHub MCP server runtime *(optional — the hosted default needs only `npx`)*
 
-Each worker's server is defined in its agent file → `mcpServers`. The default runs the
-**official `github/github-mcp-server`** in a throwaway Docker container per worker run:
+The server is defined in the **plugin's `.mcp.json`** (not in the agent files — Claude
+Code silently drops `mcpServers` declared in plugin agent frontmatter). The default
+connects to **GitHub's hosted remote MCP server** through the `mcp-remote` stdio
+bridge, with the PAT flowing keychain → env → bridge → Bearer header:
 
-```yaml
-command: docker
-args: ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN",
-       "-e", "GITHUB_TOOLSETS=pull_requests", "ghcr.io/github/github-mcp-server"]
-env:
-  GITHUB_PERSONAL_ACCESS_TOKEN: "${user_config.github_pat}"
+```json
+{
+  "mcpServers": {
+    "github": {
+      "command": "sh",
+      "args": ["-c", "exec npx -y mcp-remote https://api.githubcopilot.com/mcp/x/pull_requests --header \"Authorization: Bearer $GITHUB_PAT\" --transport http-only"],
+      "env": { "GITHUB_PAT": "${user_config.github_pat}" }
+    }
+  }
+}
 ```
 
-`GITHUB_TOOLSETS=pull_requests` narrows the server to only the pull-request toolset —
-see [Narrowing the MCP surface](#narrowing-the-mcp-surface-applied-by-default). This is
-the most reliable transport: a local stdio server whose `env:` gets dependable
-`${user_config.*}` substitution.
+**Why the bridge instead of a direct `type: http` + `headers` entry:** Claude Code
+does not substitute `${user_config.*}` into HTTP `headers:` values
+([claude-code#51581](https://github.com/anthropics/claude-code/issues/51581) — the
+header is sent literally) and `headersHelper` is unreliable (#41690, #48514, #72808);
+env substitution into a stdio command is dependable. The `/x/pull_requests` URL path
+narrows the server to only the pull-request toolset — see
+[Narrowing the MCP surface](#narrowing-the-mcp-surface-applied-by-default).
 
-Alternatives (commented in the agent files, same PAT, same tool names):
-- **Official server as a native binary** (no Docker): `github-mcp-server stdio`.
-- **GitHub's hosted remote MCP** via the `mcp-remote` stdio bridge (needs `npx`). The
-  bridge — rather than a direct `type: http` block — exists because Claude Code does
-  not substitute `${user_config.*}` into HTTP `headers:`
-  ([claude-code#51581](https://github.com/anthropics/claude-code/issues/51581)) and
-  `headersHelper` is unreliable (#41690, #48514, #72808). A direct http config is also
-  commented, ready for when #51581 is fixed.
+Local alternative (edit `.mcp.json`; same env var, same tool names): run the official
+server yourself — Docker
+(`docker run -i --rm -e GITHUB_PERSONAL_ACCESS_TOKEN -e GITHUB_TOOLSETS=pull_requests ghcr.io/github/github-mcp-server`)
+or the native `github-mcp-server stdio` binary, with
+`env: { GITHUB_PERSONAL_ACCESS_TOKEN: "${user_config.github_pat}" }`.
 
 ### 5. (Optional) `gh` CLI fallback
 
@@ -206,8 +212,8 @@ this PAT. If you push over **HTTPS using a token**, that token needs `repo` (cla
 
 Two independent layers keep the surface tight, and both ship configured:
 
-- **Server toolset:** the worker runs the server with `-e GITHUB_TOOLSETS=pull_requests`
-  (or, on the hosted-bridge alternative, connects to the `/x/pull_requests` endpoint), so
+- **Server toolset:** the plugin connects to the hosted server's `/x/pull_requests`
+  endpoint (or, on the local alternative, runs with `-e GITHUB_TOOLSETS=pull_requests`), so
   only the pull-request toolset loads — no repo-admin, actions, code-security, org, or
   file-write tools are even registered.
 - **Worker allowlist:** `agents/github-worker.md`'s `tools:` lists only the five PR tools it
@@ -262,22 +268,35 @@ injected routing block), so a 5-thread run costs ~3 dispatches instead of 7+.
 
 ## How the gate works
 
-The GitHub MCP server is scoped **inline** in `agents/github-worker.md`'s `mcpServers`
-frontmatter. Inline servers connect only while that subagent runs. As long as you do **not**
-also register a `github` server globally (`.mcp.json` / user settings), the orchestrator
-never has the connection and physically cannot call GitHub — it *must* delegate. This is an
-architectural gate, not a permission rule. (`permissions.deny` would not work: it's global
-and would block the Haiku worker too.)
+The GitHub MCP server is defined in the **plugin's `.mcp.json`**, so its tools
+(namespaced `mcp__plugin_github-pr-toolkit_github__*`) are session-visible. The
+delegation gate is enforced by the plugin's `PreToolUse` guard hook
+(`hooks/guard.mjs`), which is **always on** for these tools:
+
+- **Main agent (no `agent_id` in the hook input) → denied** with a message telling it
+  to delegate to a worker.
+- **This plugin's workers (`agent_type` is `github-worker`/`critic-worker`) →
+  actively granted** (`permissionDecision: "allow"`), so the non-interactive Haiku
+  workers run without prompts.
+- **Any other subagent → normal permission flow** (prompt/rules decide).
+
+> **Why not the inline-frontmatter gate?** The original design scoped the server
+> inline in each worker agent's `mcpServers:` frontmatter, so the orchestrator never
+> had the connection at all. Claude Code **silently drops `mcpServers` (and
+> `permissionMode`) in plugin agent frontmatter** (verified on v2.1.206: no server
+> spawn, no `mcp-logs-*` dir, tools report "No such tool available") — so the server
+> moved to `.mcp.json` and the gate moved into the hook.
 
 ---
 
 ## Security notes
 
-`agents/github-worker.md` uses `permissionMode: bypassPermissions` so the non-interactive
-Haiku worker can call its tools without prompts. Its blast radius is bounded by the explicit
-`tools:` allowlist and by the fact that the orchestrator only hands it narrow tasks. For
-tighter control, remove `permissionMode` and commit narrow allow rules (the specific
-`mcp__github__*` tools plus `Bash(gh api *)`) to `.claude/settings.json` instead.
+The guard hook grants the GitHub MCP tools only to this plugin's two workers; their
+blast radius is bounded by their explicit `tools:` allowlists and by the orchestrators
+handing them narrow, literal tasks. The workers also declare
+`permissionMode: bypassPermissions` for their Bash usage (git/gh fallback) — note that
+this frontmatter may not be honored for plugin agents on current Claude Code, in which
+case Bash calls follow your normal permission rules.
 
 Keep the PAT out of version control, scope it to the repos you actually review, and set an
 expiry.
@@ -286,38 +305,27 @@ expiry.
 
 ## Troubleshooting
 
-Start with **`/github-pr-toolkit:doctor`** — it spins up both workers' inline MCP
-servers and reports connect/auth status, without running either flow. (The inline
-servers are invisible to `claude mcp list` by design — that command only lists global
-servers — so the doctor is the way to sanity-check them.)
+Start with **`/github-pr-toolkit:doctor`** — it probes the plugin's GitHub MCP server
+through both workers and reports connect/auth status without running either flow, then
+walks you through the fix and re-probes.
 
-- **`No such tool available: mcp__github__*`.** The inline server never started at all.
-  Most common cause: the `github_pat` config is empty — **plugin config values may not
-  survive plugin upgrades**, so after updating the plugin re-enter the PAT via
-  `/plugin` → `github-pr-toolkit` → Configure. Also check Docker is running (or, on the
-  hosted-bridge alternative, `npx` and network to `api.githubcopilot.com`).
-- **Health-check fails / auth error.** The plugin's `github_pat` config is empty or invalid.
-  Set it via `/plugin` → `github-pr-toolkit` → Configure (or the install dialog); it's
-  stored in your OS keychain, not an env var.
+- **`No such tool available: mcp__plugin_github-pr-toolkit_github__*`.** The plugin's
+  server never connected. Most common cause: the `github_pat` config is empty —
+  **sensitive config values can be lost on Claude Code restart or upgrade
+  ([#62442](https://github.com/anthropics/claude-code/issues/62442))** — re-enter the
+  PAT via `/plugin` → `github-pr-toolkit` → Configure. Then check `npx` exists (the
+  bridge needs Node) and network to `api.githubcopilot.com`.
+- **`permissions … haven't granted` from a worker.** The plugin's guard hook isn't
+  loaded — run `/reload-plugins` or restart the session.
+- **Health-check fails / auth error (401/403).** The PAT is invalid, expired, or
+  under-scoped. `Incompatible auth server / does not support dynamic client
+  registration` is a bad-PAT 401 in disguise (the bridge's OAuth fallback failing) —
+  fix the PAT, ignore the OAuth wording.
 - **Worker dispatches blocked by the permission classifier.** Don't phrase worker
   prompts with "ONLY use X" / "Y is FORBIDDEN" — combined with context-mode's injected
   tool-routing text, it reads as conflicting instruction sources (an injection
   signature). State what success means instead of banning tools.
-- **Docker errors on the default server.** Ensure Docker is running, or switch the
-  worker to the native binary / hosted-bridge alternative (see step 4).
 - **Can reply but can't resolve threads.** The token's user lacks write/triage on the repo,
   or (on a non-official server) thread resolution isn't exposed — install/auth `gh` for the
   fallback.
-- **A tool name is rejected.** You're likely on a different server than the official one;
-  adjust the `mcp__github__*` names in `agents/github-worker.md` to match it.
 - **Subagent can't use `gh` / Bash under context-mode.** Apply the step-6 allowance above.
-
----
-
-## Optional hardening
-
-If you ever *must* register the GitHub MCP server globally (so the orchestrator can see it),
-add a `PreToolUse` hook matching `mcp__github__.*` that returns
-`permissionDecision: "deny"` unless the caller is the worker — the hook's stdin carries
-`agent_id` (present only inside a subagent) and `agent_type` (the agent's `name`), so
-"block the orchestrator, allow the Haiku fleet" is a short hook.

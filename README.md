@@ -35,18 +35,19 @@ write, Contents: Read** — see the [plugin README](github-pr-toolkit/README.md#
 
 - **Claude Code** with subagent `mcpServers` + `permissionMode` frontmatter support
   (verified on v2.1.197+).
-- **A GitHub MCP server** — default: the **official `github/github-mcp-server` via
-  Docker**, authenticated with the plugin's PAT through the container env (the most
-  reliable transport for keychain-stored secrets). Alternatives — native binary, or
-  GitHub's hosted remote via the `mcp-remote` bridge — are commented in each worker's
-  agent file.
+- **A GitHub MCP server** — default: **GitHub's hosted remote MCP**, reached through
+  the `mcp-remote` stdio bridge defined in the plugin's `.mcp.json` (needs only `npx`;
+  the PAT flows keychain → env → Bearer header). Local alternative: edit `.mcp.json`
+  to run the official server via Docker or the native binary.
 - **`gh` CLI** *(optional)* — gated fallback for servers lacking a native capability.
 
 ## Architecture (shared)
 
-- The GitHub MCP server is scoped **inline** in each worker agent's `mcpServers`
-  frontmatter — it connects only while that worker runs, so the orchestrator physically
-  cannot call GitHub (an architectural gate, not a permission rule).
+- The GitHub MCP server is defined in the plugin's `.mcp.json` (Claude Code drops
+  `mcpServers` declared in plugin agent frontmatter), and a **PreToolUse guard hook**
+  enforces the gate: the main agent is always denied the
+  `mcp__plugin_github-pr-toolkit_github__*` tools, while the two worker subagents are
+  actively granted them — delegation is mandatory, not advisory.
 - Workers run on **Haiku** with a locked tool allowlist, the server narrowed to the
   pull-request toolset, and explicit never-fabricate rules; the orchestrator
   cross-checks worker returns. Haiku executes, it never judges: trimming is verbatim
