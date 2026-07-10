@@ -1,6 +1,6 @@
 {
   "name": "resolve-pr-comments",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Respond to and resolve unresolved pull-request review comments — a high-reasoning orchestrator delegates all GitHub work to Haiku workers. Handles reviewer feedback; it does not perform code reviews.",
   "author": {
     "name": "Jim Cline"

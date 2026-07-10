@@ -1,5 +1,5 @@
 ---
-name: pr-comments
+name: resolve-pr-comments
 description: >-
   Resolve unresolved GitHub pull-request review comments by delegating ALL GitHub work to
   Haiku github-worker subagents while the main model reasons and drives issue-by-issue

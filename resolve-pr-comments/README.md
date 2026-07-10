@@ -50,8 +50,9 @@ claude --plugin-dir /path/to/github-agent-plugins/resolve-pr-comments
 /plugin install code-critic@jimcline          # optional sibling: adversarial PR/diff review
 ```
 
-Enabling the plugin auto-loads its command (`/resolve-pr-comments`), the `pr-comments`
-skill, and the `github-worker` agent. No `.mcp.json` changes are needed — the GitHub MCP
+Enabling the plugin auto-loads its command (`/resolve-pr-comments`), the
+`resolve-pr-comments` skill (command and skill deliberately share the name, matching
+code-critic), and the `github-worker` agent. No `.mcp.json` changes are needed — the GitHub MCP
 server is scoped **inside** the worker (see [How the gate works](#how-the-gate-works)).
 
 ### 2. Create a GitHub PAT
@@ -219,9 +220,9 @@ missing — onboards you through the fix before doing any work.
 ```
 
 Or just ask in natural language — e.g. *"resolve the unresolved review comments on PR 123"*
-— and the bundled **`pr-comments`** skill auto-triggers the same flow (also `/pr-comments`).
-Command and skill run one shared procedure; the skill delegates to the command file, so
-there's no duplicated logic to drift.
+— and the bundled **`resolve-pr-comments`** skill auto-triggers the same flow.
+Command and skill share one name and one procedure; the skill delegates to the command
+file, so there's no duplicated logic to drift.
 
 **Flow:** preflight/onboarding → workers fetch unresolved threads → you assess (optionally
 consulting an advisor) → issue-by-issue approve/deny/discuss (or auto-address all) → you
