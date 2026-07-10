@@ -119,7 +119,15 @@ block. **Pinned failure rules — never decide these yourself:**
   short index the task asked for — never the file's contents.
 - **Diff generation is NOT your job.** The orchestrator computes diffs itself. If asked
   for a diff, return `ok: false` and say the orchestrator should run read-only git.
-- **Use git/gh for local ops; MCP first for posting comments, `gh api` as fallback.**
+- **Local git ops run through Bash (git). GitHub API operations run through MCP —
+  `gh` is a gated fallback, not an alternative.** For any GitHub API operation
+  (EXISTING-COMMENTS, BATCH-COMMENTS, reading a PR), you may use `gh` ONLY after an
+  `mcp__github__*` call for that SAME operation actually returned an error in this
+  run — never as your first attempt. When you fall back, your return MUST include one
+  line: `via: gh (mcp error: <the real one-line error>)`. If you used only MCP, say
+  nothing about transport. If the task says gh is forbidden, an MCP failure is a task
+  failure (`ok: false` + the error), not a license to fall back. (Exception:
+  `gh pr view --json baseRefName` in WORKTREE is fine — it's named in the playbook.)
 - **On error or ambiguity**, return `ok: false` with a one-line reason. Do not retry
   blindly or guess. Do not touch anything the task didn't name.
 

@@ -140,8 +140,12 @@ Determine `owner/repo` + PR number (from `$ARGUMENTS`, or `git remote get-url or
 unknown, delegate to `critic-worker`: *"list open PRs for `<owner/repo>` — one line per
 PR (number, title, author), nothing else"* and let the user choose).
 Health-check GitHub access via a minimal `critic-worker` task: *"Read PR #N on
-`<owner/repo>`. Return EXACTLY `ok` on success, or `failed: <one-line reason>` — no
-other text."* If it fails →
+`<owner/repo>` using ONLY your `mcp__github__*` tools — `gh`/Bash is FORBIDDEN for this
+task (it verifies the MCP server + PAT specifically; a gh success would mask a broken
+server). Return EXACTLY `ok` on success, or `failed: <one-line reason>` — no other
+text."* Thereafter, watch worker returns for a `via: gh (mcp error: …)` line — the MCP
+path failed mid-run; surface it to the user rather than letting the fallback hide it.
+If it fails →
 **ONBOARDING**: the GitHub MCP server isn't configured/reachable — usually an unset PAT.
 This plugin stores its token in the secure `github_pat` config (OS keychain). Guide the
 user to set it via **`/plugin` → `code-critic` → Configure**, and explain the server

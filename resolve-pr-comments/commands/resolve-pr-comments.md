@@ -68,9 +68,15 @@ If the PR number still isn't known, delegate to `github-worker`: *"List open PRs
 title, author, #unresolved — and nothing else."* Show the list and let the user choose.
 
 **0.2 Health-check GitHub access.** Delegate a minimal task to `github-worker`:
-*"Confirm GitHub access to `<owner/repo>`: read its pull requests (list/search PRs, or read
-one PR). Fetch nothing else. Return EXACTLY `ok` on success, or `failed: <one-line
-reason>` — no other text."*
+*"Confirm GitHub access to `<owner/repo>` using ONLY your `mcp__github__*` tools —
+`gh`/Bash is FORBIDDEN for this task (it verifies the MCP server + PAT specifically;
+a gh success would mask a broken server). Read its pull requests (list/search PRs, or
+read one PR). Fetch nothing else. Return EXACTLY `ok` on success, or `failed:
+<one-line reason>` — no other text."*
+
+Thereafter, watch every worker return for a `via: gh (mcp error: …)` line — that means
+the MCP path failed mid-run and the worker fell back. Surface it to the user and offer
+the 0.2 onboarding; don't let a degraded setup ride silently on the fallback.
 - **ok →** continue.
 - **failed → ONBOARDING.** The GitHub MCP server isn't configured or reachable. The most
   common cause is an unset/invalid PAT — this plugin stores its token in the secure
