@@ -1,0 +1,18 @@
+{
+  "name": "github-pr-toolkit",
+  "version": "0.8.0",
+  "description": "Pull-request toolkit: /resolve-pr-comments works through the review threads reviewers opened (assess, reply, fix, resolve); /code-critic authors an adversarial review of a local diff or a GitHub PR (severity-triaged findings, fix locally or post inline comments as one review). One architecture: a high-reasoning orchestrator delegates ALL GitHub and outbound-git work to Haiku workers over GitHub's hosted MCP server.",
+  "author": {
+    "name": "Jim Cline"
+  },
+  "keywords": ["github", "pull-request", "review-comments", "comment-resolution", "code-review", "adversarial-review", "mcp", "haiku", "orchestration"],
+  "userConfig": {
+    "github_pat": {
+      "type": "string",
+      "title": "GitHub Personal Access Token",
+      "description": "One PAT shared by both workers (github-worker and critic-worker), sent as a Bearer header to GitHub's hosted MCP server. Fine-grained scopes: Metadata = Read, Pull requests = Read & write (read threads/diffs, reply, resolve, post review comments), Contents = Read (code-critic's PR worktree checkout). Stored in your OS keychain — never in settings.json or a shared env var. Re-enter after plugin upgrades if GitHub access fails.",
+      "sensitive": true,
+      "required": true
+    }
+  }
+}

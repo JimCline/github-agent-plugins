@@ -1,13 +1,15 @@
-# code-critic
+# /code-critic (github-pr-toolkit)
 
 **Adversarially review a local diff or a GitHub PR — then act on the findings.**
 
-> **Companion to [resolve-pr-comments](../resolve-pr-comments/README.md), not a duplicate.** resolve-pr-comments
+> **Companion to [`/resolve-pr-comments`](../README.md), not a duplicate.** That command
 > *resolves* the review threads reviewers already opened. code-critic **authors** the
 > review: it critiques a diff, triages the findings by severity, and either fixes them
-> locally or posts inline review comments on the PR.
+> locally or posts inline review comments on the PR. Both ship in the
+> **github-pr-toolkit** plugin and share its setup, PAT, and architecture — see the
+> [main README](../README.md) for installation.
 
-Same clean split of labor as its sibling:
+Same clean split of labor as /resolve-pr-comments:
 
 - **A higher-reasoning agent (the orchestrator)** — or, by default, **the `advisor`** —
   performs the adversarial review, then the orchestrator triages findings and drives you
@@ -70,8 +72,10 @@ per finding — and the PR gets one review event instead of N single-comment rev
 
 ## Requirements
 
-Same as resolve-pr-comments (recent Claude Code, a GitHub MCP server, Docker for the
-default server, `gh` optional), **plus a PAT with a broader scope**:
+Same as the rest of the toolkit (recent Claude Code; the GitHub MCP server defaults to
+**GitHub's hosted remote** authenticated with the plugin's PAT — nothing to install;
+Docker only if you switch to the local-server alternative; `gh` optional). The PAT scope
+`/code-critic` specifically needs beyond `/resolve-pr-comments`:
 
 | Fine-grained PAT scope | Why |
 |---|---|
@@ -79,6 +83,10 @@ default server, `gh` optional), **plus a PAT with a broader scope**:
 | **Pull requests: Read & write** | Read the diff; post inline review comments |
 | **Contents: Read** | Check out the PR branch into a worktree |
 
-Set the token in **`/plugin` → `code-critic` → Configure** (stored in your OS keychain as
-`github_pat`). This is a **separate** config from resolve-pr-comments — you set the PAT
-once per plugin.
+Set the token in **`/plugin` → `github-pr-toolkit` → Configure** (stored in your OS
+keychain as `github_pat`) — **once for the whole toolkit**; both commands share it.
+**Re-enter it after plugin upgrades** — config values may not carry forward, and an
+empty PAT surfaces as `No such tool available: mcp__github__*` (the worker's inline
+server never connects). Run **`/github-pr-toolkit:doctor`** to verify the MCP wiring
+for both workers without starting a review — the inline servers are invisible to
+`claude mcp list` by design, so the doctor is the way to sanity-check them.

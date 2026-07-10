@@ -68,11 +68,29 @@ If the PR number still isn't known, delegate to `github-worker`: *"List open PRs
 title, author, #unresolved — and nothing else."* Show the list and let the user choose.
 
 **0.2 Health-check GitHub access.** Delegate a minimal task to `github-worker`:
-*"Confirm GitHub access to `<owner/repo>` using ONLY your `mcp__github__*` tools —
-`gh`/Bash is FORBIDDEN for this task (it verifies the MCP server + PAT specifically;
-a gh success would mask a broken server). Read its pull requests (list/search PRs, or
-read one PR). Fetch nothing else. Return EXACTLY `ok` on success, or `failed:
-<one-line reason>` — no other text."*
+*"MCP health-check task — this verifies the GitHub MCP server + PAT specifically, so
+success means an `mcp__github__*` call succeeded (a `gh` result cannot count as success
+here). Call `mcp__github__list_pull_requests` (or `pull_request_read`) on
+`<owner/repo>`. If the MCP call succeeds, return EXACTLY `ok`. If the `mcp__github__*`
+tools are missing or the call errors, return `failed: <the exact error, verbatim>` —
+e.g. `failed: No such tool available: mcp__github__pull_request_read`. No other text."*
+
+**Phrase it positively, as above.** Do NOT write dispatch prompts with exclusionary
+wording like "ONLY use X" / "Y is FORBIDDEN": the context-mode plugin injects its own
+tool-routing text into every subagent prompt, and the permission classifier reads
+your prohibition + its suggestion as two conflicting instruction sources — a
+prompt-injection signature — and blocks the dispatch. State what success means
+instead of banning tools.
+
+If the return contains a `via: gh` line or anything besides the exact `ok`, the health
+check FAILED regardless of what the worker claims — a gh fallback here means the MCP
+path is broken. `failed: No such tool available: mcp__github__*` means the inline
+server never connected; likely causes in order: an empty/unset `github_pat` (plugin
+config values may not survive plugin upgrades — have the user re-enter the PAT via
+`/plugin` → github-pr-toolkit → Configure), no network to `api.githubcopilot.com`, a
+Claude Code build that won't substitute a sensitive user_config into inline headers
+(use the `headersHelper` fallback commented in `agents/github-worker.md`) — or, if
+they switched to a local-server alternative, Docker/the binary not available.
 
 Thereafter, watch every worker return for a `via: gh (mcp error: …)` line — that means
 the MCP path failed mid-run and the worker fell back. Surface it to the user and offer
@@ -81,11 +99,13 @@ the 0.2 onboarding; don't let a degraded setup ride silently on the fallback.
 - **failed → ONBOARDING.** The GitHub MCP server isn't configured or reachable. The most
   common cause is an unset/invalid PAT — this plugin stores its token in the secure
   `github_pat` config (OS keychain), NOT an env var, so guide the user to set it via
-  **`/plugin` → `resolve-pr-comments` → Configure** (or the install dialog). Then explain the
+  **`/plugin` → `github-pr-toolkit` → Configure** (or the install dialog). Then explain the
   server options and help set up whichever they pick:
-  - **(a) Official `github/github-mcp-server`** (Docker or native binary) + a GitHub PAT — recommended, token-based, works headless.
-  - **(b) Classic `@modelcontextprotocol/server-github`** via npx + PAT.
-  - **(c) GitHub-hosted remote MCP** (OAuth) — most capable, but not for headless/scheduled runs.
+  - **(a) GitHub's hosted remote MCP** (the default) — the official server run by
+    GitHub, PAT sent as a Bearer header, nothing to install or run locally.
+  - **(b) Official `github/github-mcp-server` run locally** (Docker or native binary) +
+    the same PAT — for offline/self-hosted preferences; commented alternatives in
+    `agents/github-worker.md`.
   Walk them through: creating a fine-grained PAT (Metadata: Read, Pull requests: Read & write),
   pasting it into the plugin's `github_pat` config, and — if they pick a non-default server —
   editing `agents/github-worker.md`'s `mcpServers` block (and the `mcp__github__*` tool

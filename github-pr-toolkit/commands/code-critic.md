@@ -139,17 +139,36 @@ remove the marker (step 0.1) and summarize.
 Determine `owner/repo` + PR number (from `$ARGUMENTS`, or `git remote get-url origin`; if
 unknown, delegate to `critic-worker`: *"list open PRs for `<owner/repo>` — one line per
 PR (number, title, author), nothing else"* and let the user choose).
-Health-check GitHub access via a minimal `critic-worker` task: *"Read PR #N on
-`<owner/repo>` using ONLY your `mcp__github__*` tools — `gh`/Bash is FORBIDDEN for this
-task (it verifies the MCP server + PAT specifically; a gh success would mask a broken
-server). Return EXACTLY `ok` on success, or `failed: <one-line reason>` — no other
-text."* Thereafter, watch worker returns for a `via: gh (mcp error: …)` line — the MCP
-path failed mid-run; surface it to the user rather than letting the fallback hide it.
+Health-check GitHub access via a minimal `critic-worker` task: *"MCP health-check task
+— this verifies the GitHub MCP server + PAT specifically, so success means an
+`mcp__github__*` call succeeded (a `gh` result cannot count as success here). Call
+`mcp__github__pull_request_read (method: get)` on PR #N of `<owner/repo>`. If the MCP
+call succeeds, return EXACTLY `ok`. If the `mcp__github__*` tools are missing or the
+call errors, return `failed: <the exact error, verbatim>`. No other text."*
+
+**Phrase dispatches positively.** Never use exclusionary wording like "ONLY use X" /
+"Y is FORBIDDEN" in a worker prompt: context-mode injects its own tool-routing text
+into every subagent prompt, and the classifier reads your prohibition + its suggestion
+as conflicting instruction sources (an injection signature) and blocks the dispatch.
+State what success means instead of banning tools.
+
+If the return contains a `via: gh` line or anything besides the exact `ok`, the health
+check FAILED regardless of the worker's claim. `failed: No such tool available:
+mcp__github__*` means the inline server never connected — most commonly an empty/unset
+`github_pat` (config values may not survive plugin upgrades; re-enter via `/plugin` →
+github-pr-toolkit → Configure), then no network to `api.githubcopilot.com`, a build that
+won't substitute a sensitive user_config into inline headers (`headersHelper` fallback
+commented in `agents/critic-worker.md`), or — on a local-server alternative — Docker/
+the binary missing. Thereafter, watch worker returns
+for a `via: gh (mcp error: …)` line — the MCP path failed mid-run; surface it to the
+user rather than letting the fallback hide it.
 If it fails →
 **ONBOARDING**: the GitHub MCP server isn't configured/reachable — usually an unset PAT.
 This plugin stores its token in the secure `github_pat` config (OS keychain). Guide the
-user to set it via **`/plugin` → `code-critic` → Configure**, and explain the server
-options (official Docker/native, classic npx, or GitHub-hosted remote). Note the PAT needs
+user to set it via **`/plugin` → `github-pr-toolkit` → Configure**, and explain the server
+options (default: GitHub's hosted remote MCP with the PAT as a Bearer header — nothing
+to run locally; alternatives: official server locally via Docker or native binary,
+commented in `agents/critic-worker.md`). Note the PAT needs
 **Metadata: Read, Pull requests: Read & write, Contents: Read** (Contents is required for
 the worktree checkout — this is broader than resolve-pr-comments' PAT). Re-run G0 after.
 

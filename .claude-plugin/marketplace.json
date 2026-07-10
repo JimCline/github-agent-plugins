@@ -8,14 +8,9 @@
   },
   "plugins": [
     {
-      "name": "resolve-pr-comments",
-      "source": "./resolve-pr-comments",
-      "description": "Respond to and resolve unresolved pull-request review comments — a higher-reasoning orchestrator delegates all GitHub work to Haiku workers. Not a code-review tool."
-    },
-    {
-      "name": "code-critic",
-      "source": "./code-critic",
-      "description": "Adversarial code review of a local diff or a GitHub PR — the advisor (or main agent) reviews, findings are triaged by severity, and you act issue-by-issue (fix locally / post inline PR comments). All GitHub and outbound-git work is delegated to a Haiku critic-worker. Companion to resolve-pr-comments."
+      "name": "github-pr-toolkit",
+      "source": "./github-pr-toolkit",
+      "description": "Pull-request toolkit — /resolve-pr-comments resolves the review threads reviewers opened; /code-critic authors an adversarial review of a local diff or a GitHub PR. A high-reasoning orchestrator delegates all GitHub and outbound-git work to Haiku workers over GitHub's hosted MCP server; one PAT config covers both commands. Replaces the former resolve-pr-comments and code-critic plugins."
     }
   ]
 }

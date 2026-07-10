@@ -7,7 +7,7 @@ description: >-
   advisor) reasons. Use when the user wants to review, critique, or adversarially review
   their local changes / current diff / commits vs main; do a code review of a GitHub PR
   and comment on it; "red-team this diff"; or "critique PR N". This AUTHORS a review; for
-  resolving reviewer comments already on a PR, use the resolve-pr-comments plugin instead.
+  resolving reviewer comments already on a PR, use /resolve-pr-comments (same plugin) instead.
 ---
 
 # code-critic
