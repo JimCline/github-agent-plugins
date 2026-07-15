@@ -25,6 +25,15 @@ review. Follow the steps below in order.
   comments) until the user has seen the severity-ranked findings (L5/G5) and chosen how
   to proceed via the selectable options (L6/G6). Fixing or posting before the user
   decides is a hard violation.
+- **The review is a STATIC pass over the diff.** During assessment (step 0 through the
+  L6/G6 choice) you do NOT run tests, execute code, spin up the app, or shell out to
+  diagnose whether a finding is real. Your inputs are the diff and the files you `Read`;
+  read-only git and file inspection are your only Bash. If a finding is uncertain, say
+  so IN the finding — surface it as *uncertain, confirming needs `<X>`* — rather than
+  going and confirming it. That confirmation work is itself an ACTION: present it and let
+  the user approve it (L6/G6 or a dedicated ask). Self-verifying before the user has seen
+  the findings is a hard violation, and an `.assessing`-scoped guard hook blocks
+  non-read-only Bash until the user chooses how to proceed.
 
 ## Dispatch discipline (context economy — applies to EVERY worker dispatch)
 
@@ -63,8 +72,13 @@ this session, so the guard constrains only this session and concurrent reviews i
 repo each hold their own lock:
 `touch "$PWD/.git/code-critic-${CLAUDE_CODE_SESSION_ID:-}.lock"`
 — but if `$CLAUDE_CODE_SESSION_ID` is empty/unset, arm the bare fallback instead
-(`touch "$PWD/.git/code-critic.lock"`, which blocks all sessions). While arming, also
-clean up stale locks from crashed runs (`find "$PWD/.git" -maxdepth 1 -name 'code-critic*.lock' -mmin +480 -delete`)
+(`touch "$PWD/.git/code-critic.lock"`, which blocks all sessions).
+**Also arm the assessment marker** in the same breath —
+`touch "$PWD/.git/code-critic-${CLAUDE_CODE_SESSION_ID:-}.assessing"` (bare
+`code-critic.assessing` under the fallback). This one turns on the STATIC-review gate
+(no test-running / code-execution / diagnosis Bash) and you REMOVE it the moment the user
+has chosen how to proceed (L6/G6) — see those steps. While arming, also
+clean up stale markers from crashed runs (`find "$PWD/.git" -maxdepth 1 \( -name 'code-critic*.lock' -o -name 'code-critic*.assessing' \) -mmin +480 -delete`)
 and check `.claude/worktrees/` for leftover worktrees from crashed runs (offer to have the
 worker clean them up).
 **Run the arming command yourself from the repo root** so `$PWD/.git` matches the path the
@@ -72,7 +86,9 @@ guard checks. On EVERY exit path (success, abort, or error) you MUST remove the 
 armed (the session-named one — or the bare `code-critic.lock` only if you armed the
 fallback; another session may own it): e.g.
 `rm -f "$PWD/.git/code-critic-${CLAUDE_CODE_SESSION_ID}.lock"` — tell the user if you
-couldn't.
+couldn't. Clear the assessment marker too on every exit path if it's still present
+(`rm -f "$PWD/.git/code-critic-${CLAUDE_CODE_SESSION_ID}.assessing"`), and the bare
+variants only if you armed the fallback.
 
 **0.2 Pick the mode.** If `$ARGUMENTS` names a PR (number or URL) → **GitHub PR flow**.
 If it passes `--branch`/`--against` or nothing → **Local flow** (default). If ambiguous,
@@ -106,6 +122,11 @@ Ask (AskUserQuestion):
 The chosen reviewer scrutinizes the diffs adversarially: correctness bugs, edge cases,
 security, error handling, concurrency, resource leaks, API misuse, test gaps, and
 simplification/altitude issues. Produce concrete findings, each tied to a file + line.
+This is **reasoning over the diff, not investigation** — do not run tests, execute code,
+or diagnose to prove a finding out. A finding you can't fully confirm from the diff is
+still a finding: mark it *uncertain — confirming needs `<X>`* and carry it into the list.
+If you delegate this pass to the advisor, tell it the same: static review, surface
+uncertainty, do not execute anything.
 
 ## L5 — Triage into a severity-ranked list
 You (main) compile the findings into a **numbered list ordered by severity/concern**
@@ -116,6 +137,11 @@ You (main) compile the findings into a **numbered list ordered by severity/conce
 Ask (AskUserQuestion):
 - **Review each issue one-by-one** (default), **Fix all**, **Fix all by severity**
   (choose a threshold), or **Something else** (follow their instruction).
+
+Once the user has chosen, the assessment phase is over — **remove the assessment marker**
+(`rm -f "$PWD/.git/code-critic-${CLAUDE_CODE_SESSION_ID:-}.assessing"`; bare variant under
+the fallback) so that any tests you now run as part of an approved fix are no longer gated.
+The session lock stays until final exit.
 
 Whenever you present selectable options (here and in L7), remind the user they can press
 **Tab on an option to amend it** — e.g. adjust a recommended action's wording or scope —
@@ -219,6 +245,10 @@ thread is **resolved/addressed** or still open. Do not silently drop them — th
 decides — but they change the default in G6.
 
 ## G6 — Act on each issue, issue-by-issue
+The findings are now presented and deduped — the assessment phase is over, so **remove the
+assessment marker** (`rm -f "$PWD/.git/code-critic-${CLAUDE_CODE_SESSION_ID:-}.assessing"`;
+bare variant under the fallback) before entering the loop. The session lock stays until
+final exit.
 Loop over the list one at a time. For each, show the issue (including any *already
 flagged* annotation with the existing comment quoted briefly), then ask
 (AskUserQuestion). Tell the user they can press **Tab on an option to amend it** — e.g.

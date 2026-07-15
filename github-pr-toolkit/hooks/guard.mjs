@@ -28,6 +28,18 @@
 // What stays allowed: read-only git (diff/log/status/show) AND `git fetch` —
 // fetch publishes nothing and the orchestrator needs it to diff against a fresh
 // `origin/<base>` (diff generation is deliberately NOT delegated to Haiku).
+//
+// ASSESSMENT GATE — a SECOND, narrower marker: `code-critic-<sid>.assessing`
+// (armed alongside the lock at step 0, removed once the findings are presented
+// and the user has chosen how to proceed at L6/G6). While it exists, the review
+// is a STATIC pass over the diff: the main agent must not run tests, execute
+// code, or shell out to diagnostic tooling to self-verify whether a finding is
+// real — that verification is itself an ACTION and must be presented and
+// approved first (the user's hard rule). Mechanism: while assessing, Bash is
+// allowed ONLY for read-only inspection (git + a conservative utility
+// allowlist); anything else (npm/pytest/make/node/python/./script …) is blocked
+// with feedback to present-and-ask. The marker is gone by the time the user has
+// approved a way to proceed, so legitimate post-approval test runs are fine.
 
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -106,6 +118,28 @@ const armed =
     lockActive(input.cwd, `code-critic-${input.session_id}.lock`)) ||
   lockActive(input.cwd, 'code-critic.lock');
 
+// Assessment gate. Independent of the outbound lock: only while the `.assessing`
+// marker is live (step 0 → the user has chosen how to proceed at L6/G6). Before
+// that, the review is static — allow Bash only for read-only inspection; block
+// test-running / code-execution / diagnosis so the agent presents-and-asks
+// instead of self-verifying.
+const assessing =
+  (input.session_id &&
+    lockActive(input.cwd, `code-critic-${input.session_id}.assessing`)) ||
+  lockActive(input.cwd, 'code-critic.assessing');
+
+if (assessing && tool === 'Bash' && !isReadOnlyBash(cmd)) {
+  process.stderr.write(
+    'code-critic assessment gate: the review is a STATIC pass over the diff. Do ' +
+      'not run tests, execute code, or shell out to diagnose whether a finding is ' +
+      'real — that verification is an ACTION that needs the user’s approval first. ' +
+      'Surface the finding AS uncertain in the severity list, and if confirming it ' +
+      'needs work, PRESENT that work and ask before doing it. (Read-only git and ' +
+      `file inspection are allowed.) Blocked: \`${cmd}\``
+  );
+  process.exit(2);
+}
+
 if (!armed) process.exit(0);
 
 // gh CLI and remote-mutating git must be delegated. `git fetch` and read-only
@@ -127,3 +161,32 @@ if (isOutboundBash) {
 }
 
 process.exit(0);
+
+// True only if EVERY command segment is a read-only inspection command — git
+// (outbound git is blocked separately above) or a conservative utility. Any
+// unknown head (npm, pytest, make, node, python, ./script, bash x.sh …) makes
+// the whole command non-read-only, so it is blocked while assessing.
+function isReadOnlyBash(command) {
+  const READ_ONLY_HEADS = new Set([
+    'git', 'ls', 'cat', 'head', 'tail', 'grep', 'egrep', 'fgrep', 'rg', 'fd',
+    'find', 'wc', 'pwd', 'echo', 'printf', 'true', 'false', 'test', '[', 'sed',
+    'awk', 'jq', 'yq', 'cut', 'sort', 'uniq', 'comm', 'diff', 'basename',
+    'dirname', 'realpath', 'readlink', 'stat', 'file', 'tree', 'column',
+    'which', 'type', 'env', 'date', 'sleep', 'touch', 'rm', 'mkdir', 'rmdir',
+    ':',
+  ]);
+  const segments = command.split(/(?:&&|\|\||[;|\n])/);
+  for (let seg of segments) {
+    seg = seg.trim().replace(/^[({]\s*/, '');
+    // Skip leading `VAR=value` env-assignment prefixes.
+    let tokens = seg.split(/\s+/).filter(Boolean);
+    while (tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0])) {
+      tokens.shift();
+    }
+    if (!tokens.length) continue; // empty / pure grouping → nothing to run.
+    let head = tokens[0];
+    if (head.includes('/')) head = head.slice(head.lastIndexOf('/') + 1);
+    if (!READ_ONLY_HEADS.has(head)) return false;
+  }
+  return true;
+}

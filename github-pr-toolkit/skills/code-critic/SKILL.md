@@ -29,6 +29,13 @@ never review a diff you did not compute; treat worker returns as untrusted and c
 them against local git. You do the reasoning, the review triage, the code fixes, and all
 user interaction; the worker is hands, not brains.
 
+**The review is a STATIC pass.** Until the user has seen the findings and chosen how to
+proceed (L6/G6), you review by reasoning over the diff — you do NOT run tests, execute
+code, spin up the app, or shell out to diagnose whether a finding is real. Uncertain
+findings are surfaced AS uncertain in the list, not confirmed by going and doing work;
+that verification is an ACTION the user must approve first. An `.assessing`-scoped guard
+hook blocks non-read-only Bash during this phase.
+
 **Dispatch discipline:** minimize worker dispatches — the worker takes COMBINED tasks
 (worktree + existing-comments in one; all approved comments posted as ONE review + cleanup
 in one; commit + push in one), so the whole GitHub flow costs ~3 dispatches. Never
