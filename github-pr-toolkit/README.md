@@ -5,7 +5,7 @@
 | Command | What it does | Docs |
 |---|---|---|
 | **`/resolve-pr-comments`** | Work through the review threads reviewers *already opened*: assess each, reply, fix or reject, and resolve. | this file |
-| **`/code-critic`** | *Author* an adversarial review of a local diff or a GitHub PR: severity-triaged findings, fix locally or post inline comments as one review. | [docs/code-critic.md](docs/code-critic.md) |
+| **`/code-critic`** | *Author* an adversarial review of a local diff or a GitHub PR across user-selected categories (general, security, design, rules-adherence, performance, tests), via parallel per-category review subagents (or the advisor / main agent): severity-triaged findings, fix locally or post inline comments as one review. | [docs/code-critic.md](docs/code-critic.md) |
 | **`/github-pr-toolkit:doctor`** | Diagnose (and help fix) the GitHub MCP wiring without running either flow. | below |
 
 The two flows are complements — **code-critic writes reviews; resolve-pr-comments works
@@ -13,9 +13,14 @@ through the reviews others wrote** — and share a clean split of labor:
 
 - **A higher-reasoning agent (the orchestrator)** reasons, writes the code fixes, drives
   issue-by-issue approval with you, commits, and pushes. It has **no GitHub tools**.
-- **Haiku workers** (`github-worker` for resolving, `critic-worker` for reviewing) do
-  every GitHub read/write via the GitHub MCP server (with a gated `gh` CLI fallback) and
-  hand back only distilled results.
+- **Haiku workers** (`github-worker` for the resolve flow, `critic-worker` for
+  code-critic's GitHub I/O) do every GitHub read/write via the GitHub MCP server (with a
+  gated `gh` CLI fallback) and hand back only distilled results.
+- **Per-category review subagents** (`code-reviewer-general/-security/-design/
+  -adherence/-performance/-tests`, on the **session model**, not Haiku) optionally fan
+  out code-critic's adversarial pass across the categories the user selects. They are
+  static, read-only reviewers — no GitHub tools, read-only git only — and the
+  orchestrator cross-checks their findings against the diff it computed itself.
 
 Raw GitHub API payloads never enter the high-reasoning model's context, and the expensive
 model is never spent driving a tool it doesn't need. This documentation covers setup
@@ -58,7 +63,8 @@ claude --plugin-dir /path/to/github-agent-plugins/github-pr-toolkit
 > (with the superset scopes below).
 
 Enabling the plugin auto-loads both commands (`/resolve-pr-comments`, `/code-critic`),
-their same-named skills, the doctor, both worker agents, the plugin's GitHub MCP server
+their same-named skills, the doctor, all eight agents (the two Haiku workers plus
+code-critic's six per-category reviewers), the plugin's GitHub MCP server
 (from its own `.mcp.json` — nothing for you to configure), and the guard hook that
 restricts that server's tools to the workers (see
 [How the gate works](#how-the-gate-works)). After an update, run `/reload-plugins`.
@@ -284,6 +290,11 @@ delegation gate is enforced by the plugin's `PreToolUse` guard hook
 - **This plugin's workers (`agent_type` is `github-worker`/`critic-worker`) →
   actively granted** (`permissionDecision: "allow"`), so the non-interactive Haiku
   workers run without prompts.
+- **This plugin's review subagents (`agent_type` is `code-reviewer-*`) → granted
+  Bash ONLY when every command segment is read-only inspection** and nothing
+  outbound (`gh` / `git push|commit|worktree|pull`) rides along; anything else falls
+  through and auto-denies, which enforces their static-review contract by
+  construction. They are never granted the GitHub MCP tools.
 - **Any other subagent → normal permission flow** (prompt/rules decide).
 
 > **Why not the inline-frontmatter gate?** The original design scoped the server
@@ -302,7 +313,10 @@ blast radius is bounded by their explicit `tools:` allowlists and by the orchest
 handing them narrow, literal tasks. The workers also declare
 `permissionMode: bypassPermissions` for their Bash usage (git/gh fallback) — note that
 this frontmatter may not be honored for plugin agents on current Claude Code, in which
-case Bash calls follow your normal permission rules.
+case Bash calls follow your normal permission rules. The six `code-reviewer-*`
+subagents get no GitHub tools at all, and the guard hook limits their Bash to
+read-only, non-outbound inspection commands — a reviewer that tries to run tests,
+execute code, or push simply gets denied.
 
 Keep the PAT out of version control, scope it to the repos you actually review, and set an
 expiry.

@@ -1,6 +1,6 @@
 {
   "name": "github-pr-toolkit",
-  "version": "0.14.0",
+  "version": "0.14.1",
   "description": "Pull-request toolkit: /resolve-pr-comments works through the review threads reviewers opened (assess, reply, fix, resolve); /code-critic authors an adversarial review of a local diff or a GitHub PR across user-selected categories (general, security, design, rules-adherence, performance, tests) via parallel per-category review subagents (severity-triaged findings, fix locally or post inline comments as one review). One architecture: a high-reasoning orchestrator delegates ALL GitHub and outbound-git work to Haiku workers over GitHub's hosted MCP server.",
   "author": {
     "name": "Jim Cline"

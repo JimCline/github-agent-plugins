@@ -11,7 +11,7 @@ context, and the expensive model is never spent driving tools it doesn't need.
 | Plugin | Commands | What they do |
 |---|---|---|
 | **[github-pr-toolkit](github-pr-toolkit/README.md)** | `/resolve-pr-comments` | Respond to and **resolve** the review comments reviewers left on your PRs — assess each thread, reply, fix or reject, resolve. |
-| | `/code-critic` | **Author** an adversarial code review of a local diff or a GitHub PR — severity-triaged findings, fix locally or post inline comments as one review, deduped against existing threads. ([docs](github-pr-toolkit/docs/code-critic.md)) |
+| | `/code-critic` | **Author** an adversarial code review of a local diff or a GitHub PR across user-selected categories (general, security, design, rules-adherence, performance, tests), fanned out to parallel per-category review subagents (or the advisor / main agent, with optional advisor second opinions) — severity-triaged findings, fix locally or post inline comments as one review, deduped against existing threads. ([docs](github-pr-toolkit/docs/code-critic.md)) |
 | | `/github-pr-toolkit:doctor` | Diagnose (and help fix) the GitHub MCP wiring without running either flow. |
 
 The two flows are complements: **code-critic writes reviews; resolve-pr-comments works
@@ -61,6 +61,10 @@ write, Contents: Read** — see the [plugin README](github-pr-toolkit/README.md#
   saves fixed harness overhead plus anything ambient hooks inject into subagent prompts.
 - code-critic adds a session-scoped **PreToolUse guard** for the `gh`/git surface during
   an active review.
+- code-critic's adversarial pass can fan out to **six per-category review subagents**
+  (`code-reviewer-*`, running on the session model, not Haiku); the guard hook grants
+  them read-only inspection Bash ONLY, so the static-review rule is enforced by
+  construction. Their findings are cross-checked against the orchestrator's own diff.
 
 See the [plugin README](github-pr-toolkit/README.md) for setup, flows, security notes,
 and troubleshooting.
