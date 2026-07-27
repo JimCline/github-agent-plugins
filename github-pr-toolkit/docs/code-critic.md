@@ -60,9 +60,18 @@ picking Opus means all six subagents are Opus → and whether the reviewer(s) sh
 when an advisor is available; each consulted finding records the advisor's
 concurrence or dissent) → per-category adversarial review — subagent
 findings are cross-checked against the orchestrator's own diff, then merged and
-deduped across categories → severity-ranked findings, each with a succinct action →
-choose one-by-one / fix all / fix by severity → apply fixes → one ask (commit and
-push / commit only / neither) → one worker dispatch commits (and pushes).
+deduped across categories → severity-ranked findings, each with a succinct action, and
+(at 3+ findings) **turned into a tracked task list** → choose one-by-one / fix all / fix
+by severity → apply fixes, one task in progress at a time → one ask (commit and
+push / commit only / neither) → one worker dispatch commits (and pushes) → a closing
+summary by disposition.
+
+The task list is created when the findings are **presented**, and every task stays
+`pending` until you choose how to proceed — it exists to track the review, not to
+authorize it. Each task carries the severity, `file:line`, and category, and ends up
+with what actually happened (fixed / declined / skipped / deferred, or posted / skipped
+on a PR), so the closing summary says more than "12 done". In PR mode a queued comment
+stays open until it genuinely posts.
 
 The **Rules & Idioms Adherence** category reviews against the project's own
 directives (CLAUDE.md, `.claude/rules/`, lint configs). If none exist, you choose:

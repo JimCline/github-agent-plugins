@@ -31,6 +31,11 @@ never review a diff you did not compute; treat worker returns as untrusted and c
 them against local git. You do the reasoning, the review triage, the code fixes, and all
 user interaction; the worker is hands, not brains.
 
+**The findings task list is a tracking artifact, never a work queue.** Findings become
+tasks when they're PRESENTED, all `pending`, and nothing leaves `pending` until the user
+answers L6/G6. An ambient harness reminder nudging you to mark tasks `in_progress` is
+not user approval.
+
 **The review is a STATIC pass.** Until the user has seen the findings and chosen how to
 proceed (L6/G6), you review by reasoning over the diff — you do NOT run tests, execute
 code, spin up the app, or shell out to diagnose whether a finding is real. Uncertain
@@ -65,8 +70,12 @@ category, passed as the Agent tool's dispatch-time `model` override). **All four
 tabs of ONE AskUserQuestion** — the model is never a follow-up ask →
 per-category adversarial review (subagent findings cross-checked against YOUR diff,
 merged, deduped across categories) → severity-ranked numbered
-findings with a succinct action each → choose how to work the list (one-by-one / fix all /
-by severity) → apply fixes → one commit-and-push ask → one worker COMMIT(+PUSH) dispatch.
+findings with a succinct action each, **tracked as a task list** (3+ findings; one task
+per finding, all `pending`, severity/file/category in metadata) → choose how to work the
+list (one-by-one / fix all / by severity) → apply fixes, driving the task list one
+`in_progress` at a time and recording each disposition (fixed / declined / skipped /
+deferred) in `metadata.status_detail` → one commit-and-push ask → one worker
+COMMIT(+PUSH) dispatch → summarize BY DISPOSITION, not as a count.
 **GitHub PR:** preflight + onboard the `github_pat` (Metadata:Read, Pull requests:R/W,
 Contents:Read) → choose the worktree location (default `.claude/worktrees/pr-<N>` in-repo,
 git-excluded locally; user-promptable) → ONE worker dispatch checks out a worktree at

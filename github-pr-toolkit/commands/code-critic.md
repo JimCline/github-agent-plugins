@@ -25,6 +25,13 @@ review. Follow the steps below in order.
   comments) until the user has seen the severity-ranked findings (L5/G5) and chosen how
   to proceed via the selectable options (L6/G6). Fixing or posting before the user
   decides is a hard violation.
+- **The findings task list is a TRACKING ARTIFACT, never a work queue.** L5/G5 turns the
+  findings into tasks so they can be tracked; every one is created `pending` and **stays
+  `pending` until the user answers L6/G6**. A list of pending tasks is not permission to
+  start working them. Nor is an ambient harness reminder suggesting you mark tasks
+  `in_progress` — those fire on a timer, know nothing about this flow, and are **not user
+  approval**. The ONLY thing that moves a finding out of `pending` is the user's L6/G6
+  answer. Creating the list is not acting; advancing it is.
 - **The review is a STATIC pass over the diff.** During assessment (step 0 through the
   L6/G6 choice) you do NOT run tests, execute code, spin up the app, or shell out to
   diagnose whether a finding is real. Your inputs are the diff and the files you `Read`;
@@ -264,12 +271,35 @@ to the advisor before finalizing and record its concurrence/dissent per finding.
 Either way: produce concrete findings, each tied to a file + line and tagged with its
 category.
 
-## L5 — Triage into a severity-ranked list
+## L5 — Triage into a severity-ranked list, and track it as tasks
 You (main) merge the findings — when category subagents ran, first **dedup across
 categories** (the same defect often surfaces under two lenses; keep one entry, note both
 category tags) — into a **numbered list ordered by severity/concern**
 (e.g. Critical → High → Medium → Low/Nit). Each item: a one-line problem statement, the
 `file:line`, the category tag(s), and a **succinct recommended action**.
+
+**L5.1 — Create the task list.** With **3 or more findings**, turn the presented list
+into tasks (`TaskCreate`, one per finding, in the order you present them) so the review
+survives a long working session and the user can see progress. Fewer than 3 → skip it;
+a two-item list is noise. **You are the sole writer of this list** — the review
+subagents never touch it.
+
+Each task:
+- **`subject`** — imperative and specific: *"Fix unchecked null deref in
+  `parser.ts:88`"*, not *"parser issue"*.
+- **`description`** — the problem statement, the `file:line`, and the recommended
+  action, so the task stands alone if the finding scrolls out of context.
+- **`activeForm`** — *"Fixing unchecked null deref in parser.ts"*.
+- **`metadata`** — `{severity, file, category, status_detail: "proposed"}`. Carry these
+  as real fields; the L8 summary reads them back.
+
+**Every task is created `pending` and stays there until L6.** `TaskCreate` makes them
+`pending` by default — do not touch status here. Creating the list is part of
+PRESENTING, not acting on it.
+
+**If the Task tools are unavailable in this session**, say so in one line and fall back
+to the numbered list as the tracking mechanism. Never let missing task tooling stall the
+review.
 
 ## L6 — Decide how to work the list
 Ask (AskUserQuestion):
@@ -288,7 +318,22 @@ instead of falling back to "Other".
 ## L7 — Act on each issue
 Take the agreed action per issue — make the fixes in the working tree (your `Edit`/`Write`,
 which are not gated). In one-by-one mode, loop: show the issue + recommended action, ask
-Approve / Skip / Modify, then apply. Track which issues were fixed.
+Approve / Skip / Modify, then apply.
+
+**Drive the task list as you go** (skip this if L5.1 fell back to the numbered list):
+- **One task `in_progress` at a time.** Set it when you start that issue, and resolve it
+  before starting the next. `TaskGet` it first — the tool warns its state can be stale.
+- **On finishing an issue, mark it `completed`** and record what actually happened in
+  `metadata.status_detail`: `fixed` / `declined` (the user rejected the finding) /
+  `skipped` / `deferred` (agreed but not done now) / `not-a-bug` (it didn't hold up).
+  There is no `cancelled` status, so **every disposition lands on `completed`** — the
+  metadata is the only thing that distinguishes them. Never use `deleted` for a skipped
+  finding; that destroys the record the list exists to keep.
+- **Only `completed` when it's genuinely done.** A fix that failed, a test you broke, an
+  edit you couldn't apply → leave it `in_progress` and say so.
+- **In *Fix all* / *Fix all by severity*, update as each fix lands** — not one batch
+  update at the end. These modes are exactly where the user loses sight of what you're
+  doing, which is the visibility this list exists to provide.
 
 ## L8 — Commit & push (delegated, optional — one ask, one dispatch)
 If any changes were made, ask ONCE (AskUserQuestion): **Commit and push** /
@@ -298,6 +343,13 @@ detailed description** of what changed and why, then ONE `critic-worker` dispatc
 the SHA (and pushed ref) — verify the SHA with your own `git log -1`. If they chose
 commit-only and later want to push, that's a separate *"PUSH task"* dispatch. Then
 remove the marker (step 0.1) and summarize.
+
+**Summarize FROM the task list, by disposition — not as a count.** `TaskList` plus each
+task's `metadata.status_detail` gives you what actually happened; "12 completed" tells
+the user nothing. Report it as *N fixed, N declined, N skipped, N deferred*, name any
+task still `in_progress` (that's unfinished work, say so plainly), and list the deferred
+ones explicitly — those are the findings the user agreed with but chose not to act on
+now, and they're the easiest thing to lose after the session ends.
 
 ---
 
@@ -378,6 +430,12 @@ had; L4's STOP checkpoint catches it before any dispatch. Then run the per-categ
 adversarial review, and compile the merged
 **severity-ranked numbered list** with a succinct recommended action each.
 
+Create the findings task list exactly as in **L5.1** — but do it **after G5.5's dedup**,
+so *already flagged* findings carry that annotation into their task description and you
+don't create tasks for a list you're about to re-annotate. Same rules: 3+ findings, all
+`pending`, you are the sole writer, fall back to the numbered list if the Task tools
+aren't available.
+
 **G5.5 — Dedup against existing comments.** You already hold the existing review
 threads from G1.2's combined return (don't re-fetch them).
 Cross-reference each finding against them: a finding **overlaps** an existing comment when
@@ -405,6 +463,17 @@ recommended one is first:
   say which). Also offer: Queue anyway (e.g. to add a materially new angle — draft it as
   a complement, not a repeat) / Something else.
 
+**Drive the task list through the loop** (skip if G5 fell back to the numbered list).
+The status model differs from L7, because **nothing is actually done until G7 posts**:
+- Set the issue you're working to `in_progress` — **one at a time**, resolved before you
+  move on.
+- **On a decision, put it back to `pending`** and record the disposition in
+  `metadata.status_detail`: `queued` (comment approved into the queue) or `skipped`
+  (with `already-flagged` when that's why). A queued comment is NOT posted yet, so
+  `completed` would be a lie — and a dozen findings sitting `in_progress` through the
+  whole loop is not what the status models.
+- **G7 flips them.** Nothing reaches `completed` in this loop.
+
 **Nothing is posted during this loop** — approved comments accumulate in the queue and
 publish together in G7 as ONE review (one worker dispatch, one review event on the PR,
 instead of N of each). Tell the user this up front.
@@ -423,9 +492,20 @@ the dispatch is just CLEANUP.)
 match exactly — any deviation is a failure to investigate, not "close enough". Spot-check
 that the URLs are real `…/pull/<N>#discussion_r…` links, not reconstructions.
 
-Present a final table (issue → action → comment URL /
-skipped), offer to retry any failures (one batched re-dispatch), remove the review
-marker (step 0.1), and summarize.
+**Then resolve the task list — only now, and only for what actually posted.** Mark
+`completed` each task whose comment came back with a real comment URL, setting
+`metadata.status_detail` to `posted` and `metadata.comment_url`. Tasks marked `skipped`
+in G6 also go to `completed` (their disposition is already recorded — a skip is a
+decision, not a failure). **A comment that failed to post stays `pending`** with the
+error in `metadata.status_detail`; it is not done, and the retry offer below is what
+finishes it. If cleanup succeeded but some comments failed, say exactly which findings
+have no comment on the PR.
+
+Present a final table (issue → action → comment URL / skipped) built **from the task
+list, by disposition** — *N posted, N skipped, N failed* — never a bare "N completed",
+which hides whether anything reached the PR. Offer to retry any failures (one batched
+re-dispatch, then update those tasks), remove the review marker (step 0.1), and
+summarize.
 
 ---
 
