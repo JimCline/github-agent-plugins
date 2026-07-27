@@ -73,9 +73,29 @@ with what actually happened (fixed / declined / skipped / deferred, or posted / 
 on a PR), so the closing summary says more than "12 done". In PR mode a queued comment
 stays open until it genuinely posts.
 
+### What gets reviewed
+
+**The change, not the codebase.** A finding is in scope only if the diff *introduces* it,
+or *newly exposes or worsens* it — and in the second case the finding has to say how
+("the new caller at `api.ts:40` reaches it with unvalidated input", not "this was already
+unsafe"). Pre-existing bugs, old design decisions, and untouched code in a file the diff
+happens to open are out of scope, however real they are. Reviewers read surrounding code
+to judge the change fairly, but that's input, not review surface.
+
+This binds every review path — the category subagents, the advisor, and the orchestrator
+itself — and it's enforced, not just requested: each finding carries a
+`scope: introduced-by-diff | newly-exposed-by-diff` tag, the orchestrator drops findings
+that land on unchanged lines without an exposure claim, and triage filters again before
+anything reaches you. (`git diff` prints ~3 unchanged context lines around each hunk, so
+"the line is in the diff" is not by itself proof that the change caused it — that gap is
+what let pre-existing code into reviews before.) Ask for a broader review and you'll get
+one; absent that, it stays on the change.
+
 The **Rules & Idioms Adherence** category reviews against the project's own
 directives (CLAUDE.md, `.claude/rules/`, lint configs). If none exist, you choose:
-infer the house style from the codebase, or state the rules yourself.
+infer the house style from the codebase, or state the rules yourself. It is scoped like
+every other category — it flags directives *this change* violates, not a conformance
+audit of the repo.
 
 ### Custom categories
 

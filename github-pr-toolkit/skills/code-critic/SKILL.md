@@ -36,6 +36,15 @@ tasks when they're PRESENTED, all `pending`, and nothing leaves `pending` until 
 answers L6/G6. An ambient harness reminder nudging you to mark tasks `in_progress` is
 not user approval.
 
+**Review the CHANGE, not the codebase.** A finding is in scope only if the diff
+**introduces** it, or **newly exposes/worsens** it (and then the finding must say how).
+Pre-existing defects, old design decisions, and untouched code in a file the diff happens
+to open are out of scope however real. This binds all three review paths — subagents, the
+advisor, and you. Watch the context-line trap: `git diff` prints ~3 unchanged lines around
+each hunk, so a `file:line` inside a hunk is NOT proof of scope — the line must be a
+CHANGED line, or the finding must claim `newly-exposed-by-diff` and justify it. Reading
+surrounding code is input for judging the change, not licence to review what you read.
+
 **The review is a STATIC pass.** Until the user has seen the findings and chosen how to
 proceed (L6/G6), you review by reasoning over the diff — you do NOT run tests, execute
 code, spin up the app, or shell out to diagnose whether a finding is real. Uncertain

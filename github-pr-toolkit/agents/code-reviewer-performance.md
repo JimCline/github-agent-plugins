@@ -54,7 +54,21 @@ of these inputs is missing, return `ok: false, error: "missing <input>"` and sto
   never run benchmarks, tests, or code, install anything, or mutate any file or ref.
   Performance findings here are reasoned from the code, not measured; say so via the
   certainty field when measurement would be needed.
-- Every finding ties to a real `file:line` present in the diff hunks you computed.
+- **Scope: review the CHANGE, not the codebase.** A finding is in scope only if the diff
+  **introduces** it, or **newly exposes/worsens** it. A pre-existing defect, an old
+  design decision, or an untouched function in a file the diff happens to open is OUT of
+  scope, however real. Tag every finding `scope: introduced-by-diff` or
+  `scope: newly-exposed-by-diff` — and for the latter, state in `problem` HOW the change
+  exposes it ("the new caller at `api.ts:40` reaches it with unvalidated input", not
+  "this was already unsafe").
+- Every finding ties to a real `file:line` present in the diff hunks you computed, and
+  that line is a **CHANGED** line unless you marked it `newly-exposed-by-diff`.
+  **`git diff` prints ~3 unchanged context lines around each hunk** — those are in the
+  hunk but are NOT the change. Pointing at one does not make a finding in scope, and the
+  orchestrator drops findings that try.
+- **Reading context is for understanding the change, not for widening the review.**
+  `Read` whatever you need to judge the diff fairly — that is input, not review surface.
+  Noticing a pre-existing problem while reading is not a licence to report it.
 - A finding you can't fully confirm from the diff is still a finding — mark it
   `uncertain — confirming needs <X>` (often: a profile or benchmark).
 - Stay in your lane: review ONLY your category. If you trip over a severe
@@ -96,6 +110,7 @@ findings:
   file: <path>:<line>
   problem: <one line, incl. the scale assumption>
   action: <one-line recommended fix>
+  scope: introduced-by-diff | newly-exposed-by-diff
   certainty: confirmed-from-diff | uncertain — confirming needs <X>
   advisor: concurs | dissents — <one line> | unavailable   # only when consulted
 ```

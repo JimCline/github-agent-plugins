@@ -233,6 +233,33 @@ subagent) runs tests, executes code, or diagnoses to prove a finding out. A find
 can't be fully confirmed from the diff is still a finding: mark it *uncertain —
 confirming needs `<X>`* and carry it into the list.
 
+### What is IN SCOPE (applies to ALL three review paths — subagents, advisor, and you)
+
+**This review is about the change, not about the codebase.** A finding is in scope only
+if the diff **introduces** it, or **newly exposes or worsens** it. Everything else — a
+pre-existing bug, a style you dislike, an old design decision, an untouched function in
+a file the diff happens to open — is OUT of scope, however real it is.
+
+So each finding must be one of:
+- **`introduced-by-diff`** — the changed lines create the defect. This is the default.
+- **`newly-exposed-by-diff`** — the defect predates the change, but the change makes it
+  newly reachable, more likely, or more damaging. **Say how, in the finding.** "This
+  function was already unsafe" is not enough; "the new caller at `api.ts:40` reaches it
+  with unvalidated input" is.
+
+**Reading context is for UNDERSTANDING the change, not for widening the review.**
+Reviewers may and should `Read` surrounding code to judge the diff fairly. That is
+input, not review surface. Noticing a pre-existing problem while reading is not a
+licence to report it.
+
+**The context-line trap — this is the leak to watch.** `git diff` prints ~3 UNCHANGED
+lines around every hunk. Those lines are *in the hunk* but are *not the change*. A
+finding that points at one of them is reviewing pre-existing code while appearing to
+cite the diff. A `file:line` inside a hunk is NOT sufficient evidence of scope.
+
+If the user explicitly asks for a broader review, that's their call — honor it and say
+you've widened the scope. Absent that, stay on the change.
+
 **STOP — checkpoint before any subagent dispatch.** If category subagents were chosen
 and you have **no answer from L3's Tab 4 (Reviewer model)**, you sent that ask without
 its fourth tab. Do not guess a model and do not dispatch: ask for the model now, then
@@ -257,19 +284,33 @@ the repo (or worktree) absolute path, the exact base spec you diffed
 the **advisor directive** from Tab 3 (`advisor: consult` or `advisor: none` — one
 line, always present so the agent never guesses), and — for the adherence agent — the
 directive files found (or the infer/user-guidance outcome) from L3. Each agent recomputes the diff with the same read-only git and returns
-findings in the fixed shape its definition specifies. **Cross-check every returned
-finding against your own diff** — the `file:line` must exist in the hunks you computed;
-drop (and note) anything that doesn't. You remain responsible for the merged result.
+findings in the fixed shape its definition specifies.
+
+**Cross-check every returned finding against your own diff — for PROVENANCE, not just
+location.** Two tests, and a finding must pass both:
+1. **The `file:line` exists** in the hunks you computed. Drop (and note) anything that
+   doesn't — a fabricated line is a fabricated finding.
+2. **The line is a CHANGED line** (`+`/`-` in your diff), **or** the finding is marked
+   `scope: newly-exposed-by-diff` and states how the change exposes it. A finding
+   sitting on an unchanged context line with no such claim is out of scope: drop it and
+   note that you did.
+
+Checking (1) alone is what lets pre-existing code through, since context lines live
+inside hunks. You remain responsible for the merged result.
 
 **If the advisor or you review:** run one adversarial pass restricted to the union of
 the selected categories' checklists (built-ins as itemized in L3; for a custom
-category, `Read` the checklist from its agent file). If delegating to the advisor,
-tell it the same: static review, surface uncertainty, do not execute anything. If YOU
-review and Tab 4 chose consultation, take your borderline and high-severity findings
-to the advisor before finalizing and record its concurrence/dissent per finding.
+category, `Read` the checklist from its agent file) **and to the scope rule above —
+introduced-by-diff, or newly-exposed-by-diff with the exposure stated.** This path has
+no subagent return to cross-check, so the discipline has to hold as you review: before
+writing a finding, name which changed line puts it in scope. If delegating to the
+advisor, tell it the same — static review, scoped to the change, surface uncertainty, do
+not execute anything. If YOU review and Tab 3 chose consultation, take your borderline
+and high-severity findings to the advisor before finalizing and record its
+concurrence/dissent per finding.
 
-Either way: produce concrete findings, each tied to a file + line and tagged with its
-category.
+Either way: produce concrete findings, each tied to a file + line, tagged with its
+category, and carrying its `scope:`.
 
 ## L5 — Triage into a severity-ranked list, and track it as tasks
 You (main) merge the findings — when category subagents ran, first **dedup across
@@ -277,6 +318,15 @@ categories** (the same defect often surfaces under two lenses; keep one entry, n
 category tags) — into a **numbered list ordered by severity/concern**
 (e.g. Critical → High → Medium → Low/Nit). Each item: a one-line problem statement, the
 `file:line`, the category tag(s), and a **succinct recommended action**.
+
+**Last scope filter before anything is presented.** Every surviving finding must be
+`introduced-by-diff`, or `newly-exposed-by-diff` *with the exposure stated*. Drop the
+rest — a pre-existing issue does not become in-scope by surviving to triage. Findings
+marked `newly-exposed-by-diff` carry that tag into the presented list so the user can
+see which items are about the change itself and which are about what it disturbed. If
+you dropped anything for scope, say how many in one line: silently discarding a
+reviewer's work is worse than a one-line note, and it tells the user whether the
+reviewers are drifting.
 
 **L5.1 — Create the task list.** With **3 or more findings**, turn the presented list
 into tasks (`TaskCreate`, one per finding, in the order you present them) so the review

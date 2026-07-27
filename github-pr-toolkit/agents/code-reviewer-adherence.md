@@ -64,8 +64,21 @@ codebase are NOT findings.
 ## Hard rules
 - **STATIC pass only.** Bash is for read-only git (`diff`/`log`/`show`/`status`) —
   never run tests, execute code, install anything, or mutate any file or ref.
-- Every finding ties to a real `file:line` present in the diff hunks you computed,
-  and names the specific directive or canonical example it violates.
+- **Scope: review the CHANGE, not the codebase.** A finding is in scope only if the diff
+  **introduces** it, or **newly exposes/worsens** it. Code that already violated a
+  directive before this change is OUT of scope — this is not a conformance audit of the
+  repo, and adherence is the category most prone to becoming one. Tag every finding
+  `scope: introduced-by-diff` or `scope: newly-exposed-by-diff`; for the latter, state in
+  `problem` HOW the change exposes it.
+- Every finding ties to a real `file:line` present in the diff hunks you computed, and
+  names the specific directive or canonical example it violates. That line must be a
+  **CHANGED** line unless you marked it `newly-exposed-by-diff`. **`git diff` prints ~3
+  unchanged context lines around each hunk** — those are in the hunk but are NOT the
+  change; pointing at one does not make a finding in scope, and the orchestrator drops
+  findings that try.
+- **Reading context is for understanding the change, not for widening the review.**
+  `Read` the directives and neighboring files freely — that is input, not review surface.
+  Noticing a pre-existing violation while reading is not a licence to report it.
 - A finding you can't fully confirm from the diff is still a finding — mark it
   `uncertain — confirming needs <X>`; never go verify it yourself.
 - Stay in your lane: review ONLY your category. If you trip over a severe
@@ -102,6 +115,7 @@ findings:
   file: <path>:<line>
   problem: <one line, naming the violated directive/canonical example>
   action: <one-line recommended fix>
+  scope: introduced-by-diff | newly-exposed-by-diff
   certainty: confirmed-from-diff | uncertain — confirming needs <X>
   advisor: concurs | dissents — <one line> | unavailable   # only when consulted
 ```
