@@ -6,7 +6,7 @@
 |---|---|---|
 | **`/resolve-pr-comments`** | Work through the review threads reviewers *already opened*: assess each, reply, fix or reject, and resolve. Assessment runs on a model you pick (default / Opus / Sonnet / Fable). | this file |
 | **`/code-critic`** | *Author* an adversarial review of a local diff or a GitHub PR across user-selected categories (general, security, design, rules-adherence, performance, tests), via parallel per-category review subagents on a model you pick (session default / Opus / Sonnet / Fable, one across all categories — or the advisor / main agent): severity-triaged findings, fix locally or post inline comments as one review. | [docs/code-critic.md](docs/code-critic.md) |
-| **`/github-pr-toolkit:doctor`** | Diagnose (and help fix) the GitHub MCP wiring without running either flow. | below |
+| **`/github-pr-toolkit:doctor`** | Report and clear orphaned `/code-critic` review markers, then diagnose (and help fix) the GitHub MCP wiring — without running either flow. | below |
 | **`add-review-category`** (skill) | Wizard: add your own `/code-critic` review category — guided creation from the trusted template, or validated import from a local file / GitHub. Installs to `~/.claude/agents` or the project's `.claude/agents`. | [docs/code-critic.md](docs/code-critic.md) |
 
 The two flows are complements — **code-critic writes reviews; resolve-pr-comments works
@@ -348,9 +348,18 @@ expiry.
 
 ## Troubleshooting
 
-Start with **`/github-pr-toolkit:doctor`** — it probes the plugin's GitHub MCP server
-through both workers and reports connect/auth status without running either flow, then
-walks you through the fix and re-probes.
+Start with **`/github-pr-toolkit:doctor`** — it first reports any orphaned `/code-critic`
+review markers in `.git` (offering to clear them), then probes the plugin's GitHub MCP
+server through both workers and reports connect/auth status without running either flow,
+then walks you through the fix and re-probes.
+
+- **`/code-critic` refuses to run `gh`/git, or blocks Bash, when no review is active.**
+  A crashed run left a marker in `.git`. The guard ignores markers older than 8h, so
+  this self-heals — but a bare `.git/code-critic.lock` (armed when the session id was
+  unavailable) blocks **every** session in the repo until then. `/github-pr-toolkit:doctor`
+  step 0 lists them and offers to clear them; `/code-critic`'s own sweep only fires when
+  you next arm a review *in that repo*. Manual escape hatch:
+  `rm -f .git/code-critic*.lock .git/code-critic*.assessing`.
 
 - **`No such tool available: mcp__plugin_github-pr-toolkit_github__*`.** The plugin's
   server never connected. Most common cause: the `github_pat` config is empty —

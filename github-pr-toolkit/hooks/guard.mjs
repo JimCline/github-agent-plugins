@@ -44,7 +44,13 @@
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-const MAX_AGE_MS = 8 * 60 * 60 * 1000; // 8h — bounds a stale-lock footgun.
+// 8h — bounds a stale-lock footgun. DUPLICATED, deliberately, in two prompt files that
+// cannot import from here: `commands/code-critic.md` step 0.1 (`find … -mmin +480`,
+// which sweeps stale markers when arming) and `commands/doctor.md` step 0.1 (same
+// `-mmin +480`, which classifies markers as litter vs. possibly-live). 480 min = 8h.
+// Change this and you must change both, or the guard will keep honoring markers the
+// other two have already written off as dead.
+const MAX_AGE_MS = 8 * 60 * 60 * 1000;
 
 function readInput() {
   try {

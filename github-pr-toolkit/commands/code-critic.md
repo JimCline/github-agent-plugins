@@ -78,7 +78,10 @@ repo each hold their own lock:
 `code-critic.assessing` under the fallback). This one turns on the STATIC-review gate
 (no test-running / code-execution / diagnosis Bash) and you REMOVE it the moment the user
 has chosen how to proceed (L6/G6) — see those steps. While arming, also
-clean up stale markers from crashed runs (`find "$PWD/.git" -maxdepth 1 \( -name 'code-critic*.lock' -o -name 'code-critic*.assessing' \) -mmin +480 -delete`)
+clean up stale markers from crashed runs (`find "$PWD/.git" -maxdepth 1 \( -name 'code-critic*.lock' -o -name 'code-critic*.assessing' \) -mmin +480 -delete`
+— 480 min = 8h, matching `MAX_AGE_MS` in `hooks/guard.mjs` and doctor step 0; keep all
+three in step. This only fires when a review is armed IN this repo, so `/doctor` step 0
+is the way to clear markers in a repo you're not about to review)
 and check `.claude/worktrees/` for leftover worktrees from crashed runs (offer to have the
 worker clean them up).
 **Run the arming command yourself from the repo root** so `$PWD/.git` matches the path the
