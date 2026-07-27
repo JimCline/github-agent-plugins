@@ -36,6 +36,13 @@ tasks when they're PRESENTED, all `pending`, and nothing leaves `pending` until 
 answers L6/G6. An ambient harness reminder nudging you to mark tasks `in_progress` is
 not user approval.
 
+**Always show severity.** Every rendering of a finding leads with it —
+`[Critical] parser.ts:88 — …` — in the ranked list, in every per-issue prompt (the
+AskUserQuestion itself, not just the prose), in task subjects, in the final table, and in
+the closing summary. Ordering conveys severity in the full list and nowhere else; the
+moment a finding is shown alone the ranking is gone. Never silently re-grade a reviewer's
+severity — if you disagree, say so explicitly.
+
 **Review the CHANGE, not the codebase.** A finding is in scope only if the diff
 **introduces** it, or **newly exposes/worsens** it (and then the finding must say how).
 Pre-existing defects, old design decisions, and untouched code in a file the diff happens

@@ -316,8 +316,28 @@ category, and carrying its `scope:`.
 You (main) merge the findings — when category subagents ran, first **dedup across
 categories** (the same defect often surfaces under two lenses; keep one entry, note both
 category tags) — into a **numbered list ordered by severity/concern**
-(e.g. Critical → High → Medium → Low/Nit). Each item: a one-line problem statement, the
-`file:line`, the category tag(s), and a **succinct recommended action**.
+(e.g. Critical → High → Medium → Low/Nit). Each item: its **severity**, a one-line
+problem statement, the `file:line`, the category tag(s), and a **succinct recommended
+action**.
+
+### ALWAYS SHOW SEVERITY — every time a finding is displayed, anywhere
+
+**Severity is never implied by position alone.** Ordering communicates it in the full
+list and nowhere else — the moment a finding is shown on its own (the L7/G6 loop, a
+task subject, a final table, a summary line) the ranking is gone and the user is judging
+it blind. So **every rendering of a finding leads with its severity**, in this form:
+
+> **`[Critical]`** `parser.ts:88` — unchecked null deref on the new error path *(general)*
+
+Concretely, that means severity appears in: the L5/G5 list, **every** per-issue prompt in
+L7/G6 (including the AskUserQuestion — put the severity in the question text, and use it
+as the option `header` chip where it fits), the task `subject` from L5.1, G7's final
+table, and the L8/G7 summaries. If a user can see a finding, they can see how bad it is.
+
+Never quietly drop or soften a severity between the reviewer's return and what the user
+sees. If you disagree with a reviewer's rating, present the change explicitly —
+*"reviewer said High; I've marked this Medium because …"* — rather than silently
+re-grading it.
 
 **Last scope filter before anything is presented.** Every surviving finding must be
 `introduced-by-diff`, or `newly-exposed-by-diff` *with the exposure stated*. Drop the
@@ -335,8 +355,10 @@ a two-item list is noise. **You are the sole writer of this list** — the revie
 subagents never touch it.
 
 Each task:
-- **`subject`** — imperative and specific: *"Fix unchecked null deref in
-  `parser.ts:88`"*, not *"parser issue"*.
+- **`subject`** — **lead with the severity in brackets**, then imperative and specific:
+  *"[High] Fix unchecked null deref in `parser.ts:88`"*, not *"parser issue"*. The task
+  list is read on its own, out of the order you presented, so a subject without its
+  severity strands the user.
 - **`description`** — the problem statement, the `file:line`, and the recommended
   action, so the task stands alone if the finding scrolls out of context.
 - **`activeForm`** — *"Fixing unchecked null deref in parser.ts"*.
@@ -367,8 +389,10 @@ instead of falling back to "Other".
 
 ## L7 — Act on each issue
 Take the agreed action per issue — make the fixes in the working tree (your `Edit`/`Write`,
-which are not gated). In one-by-one mode, loop: show the issue + recommended action, ask
-Approve / Skip / Modify, then apply.
+which are not gated). In one-by-one mode, loop: show the issue **led by its severity**
+(per L5's rule — the user is deciding on this issue alone, with the ranked list no longer
+in front of them) plus the recommended action, ask Approve / Skip / Modify, then apply.
+Carry the severity into the AskUserQuestion itself, not just the prose above it.
 
 **Drive the task list as you go** (skip this if L5.1 fell back to the numbered list):
 - **One task `in_progress` at a time.** Set it when you start that issue, and resolve it
@@ -400,6 +424,11 @@ the user nothing. Report it as *N fixed, N declined, N skipped, N deferred*, nam
 task still `in_progress` (that's unfinished work, say so plainly), and list the deferred
 ones explicitly — those are the findings the user agreed with but chose not to act on
 now, and they're the easiest thing to lose after the session ends.
+
+**Carry severity into the summary too** (`metadata.severity`): break each disposition
+down by severity and name every unfixed **Critical/High** individually with its
+`file:line`. A Critical the user skipped is the single most important thing on the way
+out, and it is exactly what a flat count buries.
 
 ---
 
@@ -499,9 +528,11 @@ The findings are now presented and deduped — the assessment phase is over, so 
 assessment marker** (`rm -f "$PWD/.git/code-critic-${CLAUDE_CODE_SESSION_ID:-}.assessing"`;
 bare variant under the fallback) before entering the loop. The session lock stays until
 final exit.
-Loop over the list one at a time. For each, show the issue (including any *already
-flagged* annotation with the existing comment quoted briefly), then ask
-(AskUserQuestion). Tell the user they can press **Tab on an option to amend it** — e.g.
+Loop over the list one at a time. For each, show the issue **led by its severity** (per
+L5's rule — carry it into the AskUserQuestion too, not just the prose), including any
+*already flagged* annotation with the existing comment quoted briefly, then ask
+(AskUserQuestion). Severity also belongs in the drafted comment `body` you propose: a
+reviewer reading it on GitHub has none of this context either. Tell the user they can press **Tab on an option to amend it** — e.g.
 tweak the proposed comment wording before it's posted. Options, ordered so the
 recommended one is first:
 - **If the issue is NOT already flagged** → recommend **queueing the comment**: show the
@@ -551,8 +582,10 @@ error in `metadata.status_detail`; it is not done, and the retry offer below is 
 finishes it. If cleanup succeeded but some comments failed, say exactly which findings
 have no comment on the PR.
 
-Present a final table (issue → action → comment URL / skipped) built **from the task
-list, by disposition** — *N posted, N skipped, N failed* — never a bare "N completed",
+Present a final table (**severity** → issue → action → comment URL / skipped) built
+**from the task list, by disposition** — *N posted, N skipped, N failed*, and break the
+counts down by severity so an unposted Critical can't hide inside "3 failed" — never a
+bare "N completed",
 which hides whether anything reached the PR. Offer to retry any failures (one batched
 re-dispatch, then update those tasks), remove the review marker (step 0.1), and
 summarize.

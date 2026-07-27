@@ -73,6 +73,16 @@ with what actually happened (fixed / declined / skipped / deferred, or posted / 
 on a PR), so the closing summary says more than "12 done". In PR mode a queued comment
 stays open until it genuinely posts.
 
+### Severity is always visible
+
+Every time a finding is shown to you it leads with its severity —
+`[Critical] parser.ts:88 — …` — in the ranked list, in each per-issue prompt, in the
+task list's subjects, in the final table, and in the closing summary (which names every
+unfixed Critical/High individually). List ordering conveys severity only while the whole
+list is in front of you; once you're deciding on one issue at a time, or reading the task
+list on its own, that signal is gone. So it's carried on the finding itself rather than
+inferred from position.
+
 ### What gets reviewed
 
 **The change, not the codebase.** A finding is in scope only if the diff *introduces* it,
