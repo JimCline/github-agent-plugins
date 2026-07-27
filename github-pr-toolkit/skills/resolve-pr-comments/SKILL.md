@@ -2,8 +2,9 @@
 name: resolve-pr-comments
 description: >-
   Resolve unresolved GitHub pull-request review comments by delegating ALL GitHub work to
-  Haiku github-worker subagents while the main model reasons and drives issue-by-issue
-  approval. Use when the user wants to address, triage, respond to, work through, or
+  Haiku github-worker subagents while the main model — or a thread-assessor subagent on a
+  model the user picks (default, Opus, Sonnet, or Fable) — reasons over each reviewer's
+  claim, and the main model drives issue-by-issue approval. Use when the user wants to address, triage, respond to, work through, or
   resolve PR review comments / review threads / reviewer feedback; reply to reviewers;
   clear unresolved conversations on a pull request; or "handle the comments on PR N".
 ---
@@ -16,11 +17,16 @@ they type the slash command.
 
 ## Hard invariants (never violate)
 
-**ASSESS → PRESENT → ASK → only then ACT.** You never edit the working tree, commit,
-or post to GitHub before the user has seen your per-thread assessment and approved the
-action for that thread via selectable options (AskUserQuestion) — or explicitly chosen
-"auto-address all". Fixing issues before discussing them with the user is a hard
-violation, no matter how obvious the fix.
+**FIND → PRESENT → ASK → REASON → PRESENT → ASK → only then ACT.** Two hard gates.
+**First**, before any reasoning: the moment you have the working set, present the threads
+you found and ask how the user wants them researched (all in parallel / one at a time /
+you inline / something else). Assessing them and asking afterwards spends the user's
+tokens on a plan they never approved. **Second**, before any change: you never edit the
+working tree, commit, or post to GitHub before the user has seen the assessment for a
+thread and approved the action for it via selectable options (AskUserQuestion) — or
+explicitly chosen "auto-address all". Fixing issues before discussing them is a hard
+violation, no matter how obvious the fix. Every such decision is offered as selectable
+options, never as an open-ended prompt.
 
 You (the main model) have **no GitHub tools** and never call GitHub directly. Every GitHub
 read and write is delegated to the **`github-worker`** subagent (Haiku), which owns the
@@ -32,7 +38,9 @@ commits/pushes, and all user interaction; workers are hands, not brains.
 (wait or reuse; `TaskStop` a superseded dispatch before replacing it); batch write
 actions into ONE worker when ≤ ~8 items (one aggregated table back, not one worker per
 thread); keep worker prompts minimal and self-contained — never paste ambient session
-text (hook output, plans, prior results) into a dispatch.
+text (hook output, plans, prior results) into a dispatch. This governs the **GitHub I/O
+worker**; the `thread-assessor` is reasoning, not I/O, and DOES fan out one agent per
+thread when the user picks that at the gate.
 
 ## How to run
 
@@ -54,10 +62,37 @@ If you cannot read that file, follow this outline (same steps):
    detail to a file and returns path + a one-line index; read detail lazily per thread.
    Official server: `pull_request_read` `method: get_review_comments` exposes threads
    with `isResolved` + `threadId` natively.
-4. **Assess** — per thread decide fix / reject / discuss. NO edits in this step. If an
-   advisor is available, recommend consulting it on ambiguous or high-impact items.
-5. **Decide with the user** — present the issues, then issue-by-issue Approve / Deny /
-   Discuss via selectable options, plus an "auto-address all" option. Decide only;
+3.5. **GATE — present, then ask how to research** (before ANY reasoning; assessing first
+   and asking after is a hard violation). Show the numbered threads (`path:line`, author,
+   root comment's first line verbatim — all from the handoff, read nothing). Then ask
+   (AskUserQuestion), stating the thread count: **Research all of them** (fan out one
+   `thread-assessor` per thread, in ONE message, in parallel) / **One at a time**
+   (assess → present → user decides → assess the next) / **I'll assess them all myself**
+   (inline, no dispatch). Three options only — AskUserQuestion adds its own **Other**,
+   which is a first-class answer here (name a subset, reorder, drop threads — then
+   re-ask for the rest). **If "research all" and the set is > 6 threads, ask AGAIN
+   before dispatching** (3.5.2a), naming the count: **6 at a time, rolling** (default) /
+   **all N at once** / **switch to one at a time**. Rolling means a QUEUE with a
+   concurrency cap — hold 6 in flight as background agents and dispatch the next queued
+   thread the moment one returns, never waiting on the whole batch (degrade to strict
+   waves only if background dispatch isn't available, and say so). The cap is the user's
+   to change via **Other**. Six matches code-critic's six per-category reviewers — the
+   largest reasoning fan-out this plugin has precedent for. The confirmation applies
+   ONLY to the fan-out path.
+   If a subagent path was chosen, ask the model: **Default
+   (model I'm using)** / Opus / Sonnet / Fable. Skip the gate for 0–1 threads.
+4. **Assess** — per thread decide fix / reject / discuss, judging each claim against the
+   CURRENT code (`Read` at `path:line`). NO edits in this step. Route by the gate's
+   answer; set the Agent tool's dispatch-time `model` parameter to the chosen bare alias
+   (omit it for the default), pass the handoff path + `thread_id` on big PRs so each
+   agent reads only its own thread, and cross-check returned `thread_id`s against what
+   you dispatched. If an advisor is available, recommend consulting it on ambiguous or
+   high-impact items — that becomes the assessor's `advisor:` directive when it does the
+   work.
+5. **Decide with the user** — issue-by-issue Approve / Deny / Discuss via selectable
+   options, plus an "auto-address all" option. Don't re-ask what the gate settled: if
+   3.5 chose **One at a time**, enter the individual loop directly (no global choice)
+   and interleave it with step 4; otherwise offer the global choice. Decide only;
    post nothing, change nothing yet.
 6. **Implement** — only now, and only the fixes the user approved in 5: edit, commit,
    push, run tests; then confirm the user is ready to apply the GitHub actions.

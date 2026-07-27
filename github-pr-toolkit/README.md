@@ -4,8 +4,8 @@
 
 | Command | What it does | Docs |
 |---|---|---|
-| **`/resolve-pr-comments`** | Work through the review threads reviewers *already opened*: assess each, reply, fix or reject, and resolve. | this file |
-| **`/code-critic`** | *Author* an adversarial review of a local diff or a GitHub PR across user-selected categories (general, security, design, rules-adherence, performance, tests), via parallel per-category review subagents (or the advisor / main agent): severity-triaged findings, fix locally or post inline comments as one review. | [docs/code-critic.md](docs/code-critic.md) |
+| **`/resolve-pr-comments`** | Work through the review threads reviewers *already opened*: assess each, reply, fix or reject, and resolve. Assessment runs on a model you pick (default / Opus / Sonnet / Fable). | this file |
+| **`/code-critic`** | *Author* an adversarial review of a local diff or a GitHub PR across user-selected categories (general, security, design, rules-adherence, performance, tests), via parallel per-category review subagents on a model you pick (session default / Opus / Sonnet / Fable, one across all categories — or the advisor / main agent): severity-triaged findings, fix locally or post inline comments as one review. | [docs/code-critic.md](docs/code-critic.md) |
 | **`/github-pr-toolkit:doctor`** | Diagnose (and help fix) the GitHub MCP wiring without running either flow. | below |
 | **`add-review-category`** (skill) | Wizard: add your own `/code-critic` review category — guided creation from the trusted template, or validated import from a local file / GitHub. Installs to `~/.claude/agents` or the project's `.claude/agents`. | [docs/code-critic.md](docs/code-critic.md) |
 
@@ -18,11 +18,26 @@ through the reviews others wrote** — and share a clean split of labor:
   code-critic's GitHub I/O) do every GitHub read/write via the GitHub MCP server (with a
   gated `gh` CLI fallback) and hand back only distilled results.
 - **Per-category review subagents** (`code-reviewer-general/-security/-design/
-  -adherence/-performance/-tests`, on the **session model**, not Haiku) optionally fan
-  out code-critic's adversarial pass across the categories the user selects — plus any
-  custom categories added via the `add-review-category` skill. They are
-  static, read-only reviewers — no GitHub tools, read-only git only — and the
+  -adherence/-performance/-tests`) optionally fan out code-critic's adversarial pass
+  across the categories the user selects — plus any custom categories added via the
+  `add-review-category` skill. They run on a **user-selected model** (*Default (model
+  I'm using)*, or Opus / Sonnet / Fable), applied uniformly so every category reviews on
+  the same one; Haiku is deliberately not offered, staying reserved for the I/O workers.
+  They are static, read-only reviewers — no GitHub tools, read-only git only — and the
   orchestrator cross-checks their findings against the diff it computed itself.
+- **A `thread-assessor` subagent** optionally takes the resolve flow's reasoning —
+  judging each reviewer's claim against the current code and proposing fix / reject /
+  discuss — on the same kind of **user-selected model** choice. A gate (Step 3.5)
+  presents the threads it found BEFORE anything is reasoned about, then asks how to work
+  them: research all (one assessor per thread, fanned out in parallel), one at a time
+  (assess → decide → assess the next, so a thread resolved early is never assessed), or
+  assess them all inline. Fanning out over **6 threads** takes a second confirmation,
+  whose default is a **rolling queue** — 6 assessors in flight, the next queued thread
+  dispatched the moment one returns — so a busy PR can't silently become 20 concurrent
+  subagents, and no slot idles waiting on a straggler; the cap is the user's to change.
+  The assessor has **no Bash and no GitHub tools** — only `Read`/`Grep`/`Glob` plus
+  `advisor` — so it cannot execute or mutate anything, and the orchestrator cross-checks
+  every returned `thread_id`.
 
 Raw GitHub API payloads never enter the high-reasoning model's context, and the expensive
 model is never spent driving a tool it doesn't need. This documentation covers setup
@@ -65,8 +80,9 @@ claude --plugin-dir /path/to/github-agent-plugins/github-pr-toolkit
 > (with the superset scopes below).
 
 Enabling the plugin auto-loads both commands (`/resolve-pr-comments`, `/code-critic`),
-their same-named skills, the doctor, all eight agents (the two Haiku workers plus
-code-critic's six per-category reviewers), the plugin's GitHub MCP server
+their same-named skills, the doctor, all nine agents (the two Haiku workers,
+code-critic's six per-category reviewers, and the resolve flow's `thread-assessor`),
+the plugin's GitHub MCP server
 (from its own `.mcp.json` — nothing for you to configure), and the guard hook that
 restricts that server's tools to the workers (see
 [How the gate works](#how-the-gate-works)). After an update, run `/reload-plugins`.
@@ -297,7 +313,12 @@ delegation gate is enforced by the plugin's `PreToolUse` guard hook
   outbound (`gh` / `git push|commit|worktree|pull`) rides along; anything else falls
   through and auto-denies, which enforces their static-review contract by
   construction. They are never granted the GitHub MCP tools.
-- **Any other subagent → normal permission flow** (prompt/rules decide).
+- **Any other subagent → normal permission flow** (prompt/rules decide). The resolve
+  flow's `thread-assessor` lands here by design: it matches neither grant above, so it
+  is shipped with **no Bash at all** (`Read`/`Grep`/`Glob` + `advisor` only, none of
+  which this hook gates). Bash in that agent would fall through and auto-deny in a
+  non-interactive subagent, stranding it mid-task — so don't add Bash to it without
+  adding a matching branch to `guard.mjs`.
 
 > **Why not the inline-frontmatter gate?** The original design scoped the server
 > inline in each worker agent's `mcpServers:` frontmatter, so the orchestrator never

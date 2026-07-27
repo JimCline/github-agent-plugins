@@ -51,9 +51,12 @@ Or just ask in natural language ("review my local changes", "critique PR 1234") 
 `origin/<base>` → pick the **review categories** (multi-select: General, Security,
 Design & Architecture, Rules & Idioms Adherence, Performance & Efficiency, Test
 Quality & Coverage — all six is the default) and the **reviewer** (parallel
-per-category `code-reviewer-*` subagents by default, on the session model; or the
-advisor / the orchestrator itself) and whether the reviewer(s) should **consult the
-advisor** for second opinions on borderline and high-severity findings (default: yes,
+per-category `code-reviewer-*` subagents by default; or the advisor / the orchestrator
+itself) → if you chose subagents, pick the **reviewer model** (*Default (model I'm
+using)*, or Opus / Sonnet / Fable) — one model runs *every* selected category, so
+picking Opus means all six subagents are Opus → and whether the reviewer(s) should
+**consult the advisor** for second opinions on borderline and high-severity findings
+(default: yes,
 when an advisor is available; each consulted finding records the advisor's
 concurrence or dissent) → per-category adversarial review — subagent
 findings are cross-checked against the orchestrator's own diff, then merged and

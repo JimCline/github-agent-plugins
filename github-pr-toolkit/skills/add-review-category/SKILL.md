@@ -67,6 +67,10 @@ Then validate:
 - `permissionMode:` present → flag it and strip it (outside the plugin it IS honored,
   and `bypassPermissions` would unbound the agent's Bash — the guard hook is the
   intended grant).
+- `model:` present → flag it and strip it. Review agents take the reviewer model the
+  user picks per review (code-critic L3.1), applied to every category alike via the
+  dispatch-time override; a static pin here would run this one category on a different
+  model than the rest of the review.
 - Body carries the static-review contract: the STATIC-pass hard rules, the
   `file:line` requirement, the uncertainty convention, and the standard return shape
   (`category:` / `findings:` with severity/file/problem/action/certainty).

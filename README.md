@@ -10,8 +10,8 @@ context, and the expensive model is never spent driving tools it doesn't need.
 
 | Plugin | Commands | What they do |
 |---|---|---|
-| **[github-pr-toolkit](github-pr-toolkit/README.md)** | `/resolve-pr-comments` | Respond to and **resolve** the review comments reviewers left on your PRs — assess each thread, reply, fix or reject, resolve. |
-| | `/code-critic` | **Author** an adversarial code review of a local diff or a GitHub PR across user-selected categories (general, security, design, rules-adherence, performance, tests — plus your own, via the `add-review-category` wizard skill), fanned out to parallel per-category review subagents (or the advisor / main agent, with optional advisor second opinions) — severity-triaged findings, fix locally or post inline comments as one review, deduped against existing threads. ([docs](github-pr-toolkit/docs/code-critic.md)) |
+| **[github-pr-toolkit](github-pr-toolkit/README.md)** | `/resolve-pr-comments` | Respond to and **resolve** the review comments reviewers left on your PRs — assess each thread, reply, fix or reject, resolve. Assessment runs inline or on a `thread-assessor` subagent pinned to the model you pick (default, Opus, Sonnet, or Fable). |
+| | `/code-critic` | **Author** an adversarial code review of a local diff or a GitHub PR across user-selected categories (general, security, design, rules-adherence, performance, tests — plus your own, via the `add-review-category` wizard skill), fanned out to parallel per-category review subagents on the model you pick (session default, Opus, Sonnet, or Fable — one model across every category; or hand the review to the advisor / main agent instead, with optional advisor second opinions) — severity-triaged findings, fix locally or post inline comments as one review, deduped against existing threads. ([docs](github-pr-toolkit/docs/code-critic.md)) |
 | | `/github-pr-toolkit:doctor` | Diagnose (and help fix) the GitHub MCP wiring without running either flow. |
 
 The two flows are complements: **code-critic writes reviews; resolve-pr-comments works
@@ -62,9 +62,19 @@ write, Contents: Read** — see the [plugin README](github-pr-toolkit/README.md#
 - code-critic adds a session-scoped **PreToolUse guard** for the `gh`/git surface during
   an active review.
 - code-critic's adversarial pass can fan out to **six per-category review subagents**
-  (`code-reviewer-*`, running on the session model, not Haiku); the guard hook grants
-  them read-only inspection Bash ONLY, so the static-review rule is enforced by
-  construction. Their findings are cross-checked against the orchestrator's own diff.
+  (`code-reviewer-*`, on a model you pick — session default, Opus, Sonnet, or Fable,
+  applied uniformly so every category reviews on the same one; the picker never offers
+  Haiku, which stays reserved for the I/O workers); the guard hook grants them read-only
+  inspection Bash ONLY, so the static-review rule is enforced by construction. Their
+  findings are cross-checked against the orchestrator's own diff.
+- resolve-pr-comments gates on the user before any reasoning happens: it presents the
+  threads it found, then asks how to work them — fan out a **`thread-assessor`** per
+  thread in parallel, go one at a time (assess → decide → next), or assess inline — on
+  the model they pick (default / Opus / Sonnet / Fable). Fanning out over **6 threads**
+  takes a second confirmation, defaulting to a **rolling queue** (6 in flight, refilled
+  as each returns) rather than one big batch, so a busy PR can't silently become 20
+  concurrent subagents. The assessor carries no Bash and no GitHub tools, so it can only
+  read and propose.
 
 See the [plugin README](github-pr-toolkit/README.md) for setup, flows, security notes,
 and troubleshooting.

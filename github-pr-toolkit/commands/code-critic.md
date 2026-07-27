@@ -1,5 +1,5 @@
 ---
-description: Adversarial code review of a local diff or a GitHub PR — the user picks review categories (general, security, design, adherence, performance, tests) and a reviewer (parallel category subagents, the advisor, or the main agent); findings are triaged by severity and you act issue-by-issue. GitHub writes and commits/pushes go through a Haiku worker; diffs you generate yourself.
+description: Adversarial code review of a local diff or a GitHub PR — the user picks review categories (general, security, design, adherence, performance, tests), a reviewer (parallel category subagents, the advisor, or the main agent), and the model those subagents run on (session default, Opus, Sonnet, or Fable — one model across every category); findings are triaged by severity and you act issue-by-issue. GitHub writes and commits/pushes go through a Haiku worker; diffs you generate yourself.
 argument-hint: "[PR number/URL, or --branch <ref> / --against <ref> for local — optional]"
 ---
 
@@ -129,6 +129,12 @@ With custom categories: TWO asks — first the category tabs (Tabs 1–2 plus on
 "Custom" tabs listing the custom categories, ≤4 options per tab), then a second ask
 with the Reviewer and Advisor tabs. (Remind about Tab-to-amend either way.)
 
+**Plus a conditional follow-up — the reviewer-model ask (L3.1 below)** — when Tab 3
+selects category subagents. AskUserQuestion takes at most FOUR questions per call, so
+this is always a **separate ask**, never a fifth tab alongside the four below. If the
+custom-category split already forced a second ask, fold it into that one rather than
+adding a third round trip.
+
 **Tab 1 — "Categories" (multiSelect).** *"Which review categories? Selecting all
 (across both tabs) is the default."*
 - **General Review** — correctness bugs, edge cases, error handling, concurrency,
@@ -152,7 +158,7 @@ category tab, treat it as **all built-in six plus every custom category**.
 
 **Tab 3 — "Reviewer".** *"Are review subagents allowed?"*
 - **Category subagents (default)** — one `code-reviewer-<category>` subagent per
-  selected category, run in parallel.
+  selected category, run in parallel. *(You pick the model they all run on next.)*
 - **The advisor** — hand the diffs to the `advisor` tool for one independent pass
   covering the selected categories. *(If no advisor is available this session, say so
   and fall back.)*
@@ -175,6 +181,32 @@ from the codebase** (read neighboring files for the house style) or **User provi
 guidance** (let them state the rules to review against). Pass the outcome to whoever
 reviews that category.
 
+### L3.1 — The reviewer-model ask (conditional)
+
+Ask this **only when Tab 3 chose category subagents** — that is the one path where the
+model is selectable at all (the advisor runs on its own fixed model; "the main agent"
+IS the session model, so there is nothing to pick). A SEPARATE one-question
+AskUserQuestion: *"Which model should the review subagents run on? One model runs every
+selected category."* The choice applies uniformly — pick Opus and ALL the dispatched
+`code-reviewer-*` subagents run on Opus, one per selected category.
+- **Default (model I'm using)** — every reviewer inherits the model running this
+  session.
+- **Opus** — highest-reasoning pass.
+- **Sonnet** — faster and cheaper per category; a step down in reasoning depth.
+- **Fable** — the Mythos-class alternative.
+
+Pass the choice through as the Agent tool's dispatch-time `model` parameter, which
+overrides agent frontmatter. **Use the bare aliases only** — `opus`, `sonnet`, `fable`
+(that param takes aliases, not full model IDs like `claude-opus-5`), and note that an
+alias tracks the newest model in its family rather than pinning a specific generation.
+For **Default (model I'm using)**, omit the parameter entirely so the reviewers
+inherit — do not try to name the session's own model.
+
+**Say it plainly when the pin is a downgrade.** Reasoning over a diff is the hard part
+of this flow. If the user picks a model below the session's, tell them once that it
+trades review depth for speed/cost — then honor the choice without re-litigating it.
+Never pin reviewers to Haiku; it is not offered here for that reason.
+
 ## L4 — Adversarial review (per selected category)
 This is **reasoning over the diff, not investigation** — no reviewer (you, advisor, or
 subagent) runs tests, executes code, or diagnoses to prove a finding out. A finding that
@@ -184,7 +216,13 @@ confirming needs `<X>`* and carry it into the list.
 **If category subagents were chosen:** dispatch ONE `code-reviewer-<category>` agent per
 selected category (the built-ins — general / security / design / adherence /
 performance / tests — use the plugin-prefixed type; customs use their bare type from
-the agents list) — all in a SINGLE message so they run in parallel. A selected custom
+the agents list) — all in a SINGLE message so they run in parallel. **Set the Agent
+tool's `model` parameter on EVERY one of these dispatches to the L3.1 alias** (`opus` /
+`sonnet` / `fable`) so all categories review on the one model the user picked — customs
+included, since the override applies to any agent type and takes precedence over
+frontmatter (a custom file that shipped its own `model:` pin is intentionally
+overridden by the user's choice). If L3.1 chose **Default (model I'm using)**, omit the
+parameter entirely and let them inherit. Never mix models across categories in a single review. A selected custom
 category whose agent type isn't loaded this session gets covered by YOU instead:
 `Read` its file's checklist and fold it into a main-agent pass alongside the subagent
 dispatches; tell the user that's what happened. Each dispatch is minimal and self-contained:
@@ -314,8 +352,10 @@ As in L2, with your own read-only git inside the worktree:
 not compute.
 
 ## G3–G5 — Review (same as L3–L5), then dedup against existing comments
-Choose the categories and the reviewer (category subagents default; point them at the
-WORKTREE path), run the per-category adversarial review, and compile the merged
+Choose the categories, the reviewer (category subagents default; point them at the
+WORKTREE path), and — when subagents were chosen — the reviewer model from L3.1,
+applied to every category dispatch exactly as in L4. Run the per-category adversarial
+review, and compile the merged
 **severity-ranked numbered list** with a succinct recommended action each.
 
 **G5.5 — Dedup against existing comments.** You already hold the existing review

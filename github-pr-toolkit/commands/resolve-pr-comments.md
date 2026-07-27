@@ -1,5 +1,5 @@
 ---
-description: Resolve unresolved PR review comments — Haiku workers fetch & post to GitHub, you reason & drive issue-by-issue user approval.
+description: Resolve unresolved PR review comments — Haiku workers fetch & post to GitHub; the threads found are presented BEFORE any reasoning, and the user picks how to research them (fan out one thread-assessor subagent per thread, one at a time, or inline) and on which model (default, Opus, Sonnet, or Fable); then issue-by-issue approval drives the fixes.
 argument-hint: "[PR number or URL — optional]"
 ---
 
@@ -16,14 +16,26 @@ pull-request review comments. Follow the steps below in order.
 - **You** do the reasoning, the code fixes, the commits/pushes, and all user
   interaction. Workers are hands, not brains. Hand each worker only the narrow slice it
   needs, never the whole plan.
-- **ASSESS → PRESENT → ASK → only then ACT. Never fix anything before the user
-  approves it.** You make ZERO edits to the working tree (no Edit/Write, no commits)
-  until the user has seen the issues (Step 4's assessment presented in full) and
-  approved the action for that specific thread via the Step 5 selectable options (or
-  explicitly chosen "auto-address all"). Fixing first and asking after is a hard
-  violation — the user decides, you execute.
+- **FIND → PRESENT → ASK → REASON → PRESENT → ASK → only then ACT.** There are TWO
+  gates, and both are hard:
+  1. **Before any reasoning** (Step 3.5) — the moment you have the working set, present
+     the threads you found and ask how the user wants them researched (all in parallel /
+     one at a time / you inline / something else) via selectable options. Assessing the
+     threads and asking afterwards is a violation: it spends the user's tokens on a plan
+     they never approved.
+  2. **Before any change** — you make ZERO edits to the working tree (no Edit/Write, no
+     commits) until the user has seen the assessment for a thread and approved the
+     action for that specific thread via the Step 5 selectable options (or explicitly
+     chosen "auto-address all"). Fixing first and asking after is a violation.
+  The user decides, you execute — and **every** such decision is offered as selectable
+  options, never as an open-ended prompt with no choices.
 
 ## Dispatch discipline (context economy — applies to EVERY worker dispatch)
+
+**Scope:** this section governs the **`github-worker`** — GitHub I/O, where consolidation
+is free and duplication is pure waste. It does NOT govern the `thread-assessor`, which is
+reasoning rather than I/O: that one fans out **one agent per thread** when the user picks
+it at the Step 3.5 gate. Never collapse a user-chosen fan-out to "save dispatches."
 
 Worker results land in YOUR context; every avoidable dispatch is avoidable tokens.
 
@@ -166,26 +178,153 @@ your working set.
 
 ---
 
-## Step 4 — Assess, and (if available) consult the advisor
+## Step 3.5 — Present the threads and ask how to research them (GATE)
+
+**Nothing has been reasoned about yet, and nothing may be.** This gate sits between the
+fetch and any assessment: the user sees what was found and chooses how it gets worked
+BEFORE you spend reasoning on it. Assessing first and asking afterwards is a hard
+violation — it spends the user's tokens on a plan they never approved.
+
+**3.5.1 Present the working set.** Show a **numbered list** of the unresolved threads,
+one line each: `path:line`, author, and the root comment's **first line verbatim**.
+Every field comes from the Steps 1–3 handoff — do NOT read files, judge claims, or
+propose actions here. If the working set is empty, say so and stop. Under the
+>15-thread file handoff, this list IS your one-line index; still don't open the file.
+
+**3.5.2 Ask how to proceed** (AskUserQuestion; remind about Tab-to-amend). State the
+thread count in the question text so the cost of each option is concrete:
+- **Research all of them (default)** — fan out ONE `thread-assessor` subagent **per
+  thread**, all dispatched in a SINGLE message so they run in parallel. Fastest to a
+  complete picture. Say the number out loud first — *"that's N parallel subagents"* —
+  because every one of them returns a proposal into your context whether or not the
+  user later acts on that thread. **Above 6 threads this needs a second confirmation
+  (3.5.2a), which offers a capped rolling queue instead — do not dispatch straight from
+  this answer.**
+- **One at a time** — assess thread 1, present it, take the user's decision, and only
+  then assess thread 2. Cheapest in context (you never hold a proposal for a thread the
+  user skips or resolves early) and the slowest in wall-clock: N sequential round trips.
+- **I'll assess them all myself** — you reason inline, no subagents, no dispatches.
+  This is the flow's original behavior.
+
+Three options, deliberately — AskUserQuestion appends its own **Other** choice, so do
+NOT add a fourth "Something else" of your own. **Other is a first-class answer here**,
+not a fallback: expect the user to name a subset to research now ("just the three in
+`api/`"), reorder the list, or drop threads they don't care about. Honor whatever they
+say, then re-ask this question for whatever remains.
+
+**3.5.2a Confirm a large fan-out (> 6 threads).** If the user chose *Research all of
+them* and the working set is **more than 6** threads, **stop and ask again** before
+dispatching anything. Six is the ceiling this plugin has precedent for — it is exactly
+code-critic's six per-category reviewers — and past it the costs stop being obvious:
+N concurrent subagents, N proposals landing in your context at once, and N× the tokens
+whether or not the user ends up acting on those threads. Name the actual number in the
+question. Options:
+- **6 at a time, rolling (default)** — hold at most 6 assessors in flight and QUEUE the
+  rest; the moment one returns, dispatch the next queued thread into the freed slot.
+  Same complete picture at the end, concurrency never above the cap, and no idle slot
+  waiting on a straggler. See Step 4 for the mechanics.
+- **All N at once** — the full fan-out they originally asked for. Honor it without
+  re-litigating; they have now been told the count.
+- **Switch to one at a time** — fall back to the sequential path (assess → decide →
+  next), which is the cheapest in context and never assesses a thread the user resolves
+  early.
+
+The cap is the user's to set — 6 is the default, not a limit on them. If they name a
+different number (via **Other**, e.g. *"do 10 at a time"*), that number becomes the cap
+and everything below works the same way.
+
+Do NOT apply this confirmation to *One at a time* or *I'll assess them all myself* —
+neither runs concurrent subagents, so the count is irrelevant to both.
+
+**3.5.3 If a subagent path was chosen, ask which model** (AskUserQuestion): **Default
+(model I'm using)** / **Opus** / **Sonnet** / **Fable**. Reasoning over a reviewer's
+claim is the hard part of this flow, so the model doing it is the user's call. Skip this
+ask for *I'll assess them all myself*.
+
+Skip the whole gate for a trivial working set (0–1 threads): assess inline and say so.
+
+---
+
+## Step 4 — Assess (per the choice made at the gate)
 
 **Assessment only — you change NOTHING in this step.** No edits, no fixes, no
-"quick wins": produce proposals, then present them to the user in Step 5.
+"quick wins": produce proposals, then work them with the user in Step 5.
 
-For each thread, decide a concrete proposed action:
+For each thread, the outcome is one concrete proposed action:
 - **fix** — a specific code change (name the files/functions and the gist).
 - **reject** — with a crisp rationale to post back to the reviewer.
 - **discuss** — genuinely ambiguous / needs the author's intent.
 
+Judge each claim on its merits against the CURRENT code — `Read` the file at
+`path:line` before deciding, since a comment may already be addressed or may have
+drifted. A thread you cannot settle from the code is a `discuss`, not a guess.
+
+**Route by the gate's answer:**
+
+- **Research all of them** — dispatch one `thread-assessor` per thread, ALL in a single
+  message so they run in parallel. Each dispatch carries exactly one thread. (Working
+  set > 6 requires the 3.5.2a confirmation first.)
+- **6 at a time, rolling** — a **queue with a concurrency cap**, not a series of
+  barriers. Keep exactly `cap` assessors in flight; every remaining thread waits in the
+  queue for an open slot:
+  1. Dispatch the first `cap` threads, each as a **background** assessor, so completions
+     arrive one at a time instead of all at once.
+  2. **On each completion, immediately dispatch the next queued thread** into the freed
+     slot. Do not wait for the other in-flight agents — that is the barrier behavior
+     this option exists to avoid, and it idles a slot on every straggler.
+  3. Repeat until the queue is empty and all in-flight agents have returned.
+
+  Never exceed `cap` in flight. Report progress as results land (*"9 of 19 assessed"*)
+  and treat any point as a valid stop: if the user has seen enough, drop the QUEUE and
+  say how many were never assessed — don't push on to the full set. In-flight agents can
+  be left to finish or stopped (`TaskStop`); either way, report which threads have no
+  assessment.
+
+  **If background dispatch or per-agent completion notifications aren't available to
+  you**, degrade to strict waves — dispatch `cap`, wait for all of them, then the next
+  `cap` — and tell the user you're doing waves rather than a rolling queue. Staying
+  under the cap matters more than the refill strategy.
+- **One at a time** — dispatch a single-thread `thread-assessor` for the current thread
+  only. Present its proposal, take the user's Step 5 decision on it, and **only then**
+  dispatch the next. Never run ahead of the user; a thread they resolve early is a
+  thread you never assess.
+- **I'll assess them all myself** — dispatch nothing; reason inline.
+
+**Every dispatch carries:** the repo absolute path; the thread itself (`thread_id`,
+`path`, `line`, `author`, root comment body — or, under the file handoff, the JSON path
+plus the `thread_id` to work, so the agent reads only its own thread); and the
+**advisor directive** — one line, always present so the agent never guesses
+(`advisor: consult` or `advisor: none`, per the paragraph below).
+
+**Set the Agent tool's `model` parameter** on every assessor dispatch to the alias
+chosen at 3.5.3 — `opus` / `sonnet` / `fable`. That parameter takes **bare aliases
+only** (not full model IDs like `claude-opus-5`), and an alias tracks the newest model
+in its family rather than pinning a generation. For **Default (model I'm using)**, omit
+the parameter entirely so the assessor inherits your model.
+
+**Cross-check what comes back**: every returned `thread_id` must be one you dispatched —
+drop and note anything that isn't, and never let a returned proposal invent a file or
+line. You remain responsible for the proposals you present, whoever reasoned them.
+
 If an **advisor** capability is available to you this session (an advisor tool/model),
 **recommend to the user** that you consult it on the `discuss` items and any high-impact
 `fix`/`reject` calls, and fold its input in if they agree. If no advisor is available,
-say so in one line and continue.
+say so in one line and continue. When an assessor subagent is doing the work, this
+choice becomes its `advisor:` directive line rather than something you do yourself.
 
 ---
 
 ## Step 5 — Issue-by-issue resolution with the user
 
-First offer a global choice (AskUserQuestion):
+**Don't re-ask what the gate already settled.** Step 3.5 chose how the threads get
+worked; this step honors it:
+- Gate chose **One at a time** → the individual loop is already implied. Enter it
+  directly with NO global choice, interleaved with Step 4: assess thread N → present →
+  decide → assess thread N+1. Asking again here is a duplicate question.
+- Gate chose **Research all of them** or **I'll assess them all myself** → you now hold
+  every proposal, so offer the global choice below.
+
+Global choice, when it applies (AskUserQuestion):
 - **"Review each issue individually"**, or
 - **"Auto-address all"** — apply your proposed action to every thread, then show the
   whole batch for a single confirmation before anything is posted.

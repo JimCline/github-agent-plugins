@@ -7,9 +7,13 @@ description: >-
   Recomputes the diff with read-only git, reasons over it, and returns findings in a
   fixed shape — it never edits, executes, or tests anything.
 
-# No `model:` — review reviewers inherit the SESSION model. Reasoning over a diff is
-# the hard part of this flow; only the I/O workers (critic-worker, github-worker) are
-# pinned to Haiku.
+# No static `model:` — reviewers DEFAULT to the SESSION model. Reasoning over a diff
+# is the hard part of this flow; only the I/O workers (critic-worker, github-worker)
+# are pinned to Haiku. The user may choose a different reviewer model per review
+# (code-critic L3.1); the orchestrator applies it uniformly to every category via
+# the Agent tool's dispatch-time `model` parameter, which overrides frontmatter. Do
+# NOT add a static `model:` here — it would pin one category out of step with the
+# rest and silently contradict that choice.
 
 # PERMISSION NOTE: plugin agents' `permissionMode: bypassPermissions` frontmatter is
 # NOT honored (observed on 2.1.206) — kept for documentation and in case a later
