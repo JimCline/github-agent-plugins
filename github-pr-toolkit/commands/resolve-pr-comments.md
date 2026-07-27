@@ -259,6 +259,12 @@ Judge each claim on its merits against the CURRENT code — `Read` the file at
 `path:line` before deciding, since a comment may already be addressed or may have
 drifted. A thread you cannot settle from the code is a `discuss`, not a guess.
 
+**STOP — checkpoint before any assessor dispatch.** If you have no answer from the
+Step 3.5 gate — how to research (3.5.2) and, for a subagent path, which model (3.5.3) —
+you skipped it. Do not guess and do not dispatch: go back and run the gate now. Assessing
+threads the user never saw, or on a model they were never offered, is a violation of the
+first hard invariant, not a shortcut.
+
 **Route by the gate's answer:**
 
 - **Research all of them** — dispatch one `thread-assessor` per thread, ALL in a single

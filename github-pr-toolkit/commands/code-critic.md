@@ -124,16 +124,23 @@ type appears in your available-agents list (new files need a new/reloaded sessio
 if a file exists but the type isn't loaded, still offer the category and note that
 review of it will fall to the advisor/main-agent path this session.
 
-**The ask.** With no custom categories: ONE AskUserQuestion with the four tabs below.
-With custom categories: TWO asks — first the category tabs (Tabs 1–2 plus one or more
-"Custom" tabs listing the custom categories, ≤4 options per tab), then a second ask
-with the Reviewer and Advisor tabs. (Remind about Tab-to-amend either way.)
+**L3 MAKES TWO ASKS. Both are required before you may enter L4.**
 
-**Plus a conditional follow-up — the reviewer-model ask (L3.1 below)** — when Tab 3
-selects category subagents. AskUserQuestion takes at most FOUR questions per call, so
-this is always a **separate ask**, never a fifth tab alongside the four below. If the
-custom-category split already forced a second ask, fold it into that one rather than
-adding a third round trip.
+| | What | Where |
+|---|---|---|
+| **ASK A** | The four tabs: Categories / More areas / Reviewer / Advisor use | below |
+| **ASK B** | The reviewer model — *when ASK A's Tab 3 chose category subagents* | L3.1 |
+
+ASK B is a **separate AskUserQuestion call**, never a fifth tab: AskUserQuestion takes
+at most FOUR questions per call and ASK A already uses all four. Making ASK A and then
+walking into L4 is the failure mode this table exists to prevent — the user ends up
+with reviewers on a model they were never offered a choice about.
+
+**ASK A's shape.** With no custom categories: ONE AskUserQuestion with the four tabs
+below. With custom categories: split it — first the category tabs (Tabs 1–2 plus one or
+more "Custom" tabs listing the custom categories, ≤4 options per tab), then the Reviewer
+and Advisor tabs. In that case fold ASK B into the second call rather than adding a
+third round trip. (Remind about Tab-to-amend either way.)
 
 **Tab 1 — "Categories" (multiSelect).** *"Which review categories? Selecting all
 (across both tabs) is the default."*
@@ -174,21 +181,19 @@ and note it.)
 - **No — independent review** — the reviewer(s) work alone; findings stand on their
   own reasoning.
 
-**Adherence prerequisite (only if that category is selected):** check for project
-directives — `CLAUDE.md` (root and relevant subdirs), `.claude/rules/`, contributing
-docs, lint/format configs. If none exist, ask (AskUserQuestion): **Infer conventions
-from the codebase** (read neighboring files for the house style) or **User provides
-guidance** (let them state the rules to review against). Pass the outcome to whoever
-reviews that category.
+### L3.1 — ASK B: the reviewer model
 
-### L3.1 — The reviewer-model ask (conditional)
+**This is the second of L3's two required asks. Do not leave L3 without having made
+it** (or having established that it does not apply). Ask it **when Tab 3 chose category
+subagents** — that is the one path where the model is selectable at all (the advisor
+runs on its own fixed model; "the main agent" IS the session model, so there is nothing
+to pick). If Tab 3 chose advisor or main agent, say in one line that the model choice
+doesn't apply and move on.
 
-Ask this **only when Tab 3 chose category subagents** — that is the one path where the
-model is selectable at all (the advisor runs on its own fixed model; "the main agent"
-IS the session model, so there is nothing to pick). A SEPARATE one-question
-AskUserQuestion: *"Which model should the review subagents run on? One model runs every
-selected category."* The choice applies uniformly — pick Opus and ALL the dispatched
-`code-reviewer-*` subagents run on Opus, one per selected category.
+A SEPARATE one-question AskUserQuestion: *"Which model should the review subagents run
+on? One model runs every selected category."* The choice applies uniformly — pick Opus
+and ALL the dispatched `code-reviewer-*` subagents run on Opus, one per selected
+category.
 - **Default (model I'm using)** — every reviewer inherits the model running this
   session.
 - **Opus** — highest-reasoning pass.
@@ -207,11 +212,24 @@ of this flow. If the user picks a model below the session's, tell them once that
 trades review depth for speed/cost — then honor the choice without re-litigating it.
 Never pin reviewers to Haiku; it is not offered here for that reason.
 
+### L3.2 — Adherence prerequisite (only if that category is selected)
+
+Check for project directives — `CLAUDE.md` (root and relevant subdirs),
+`.claude/rules/`, contributing docs, lint/format configs. If none exist, ask
+(AskUserQuestion): **Infer conventions from the codebase** (read neighboring files for
+the house style) or **User provides guidance** (let them state the rules to review
+against). Pass the outcome to whoever reviews that category.
+
 ## L4 — Adversarial review (per selected category)
 This is **reasoning over the diff, not investigation** — no reviewer (you, advisor, or
 subagent) runs tests, executes code, or diagnoses to prove a finding out. A finding that
 can't be fully confirmed from the diff is still a finding: mark it *uncertain —
 confirming needs `<X>`* and carry it into the list.
+
+**STOP — checkpoint before any subagent dispatch.** If category subagents were chosen
+and you have **no answer from L3.1's ASK B**, you skipped a required ask. Do not guess a
+model and do not dispatch: go make that ask now, then continue. Dispatching reviewers on
+a model the user was never offered is a violation of L3, not a shortcut.
 
 **If category subagents were chosen:** dispatch ONE `code-reviewer-<category>` agent per
 selected category (the built-ins — general / security / design / adherence /
@@ -352,10 +370,11 @@ As in L2, with your own read-only git inside the worktree:
 not compute.
 
 ## G3–G5 — Review (same as L3–L5), then dedup against existing comments
-Choose the categories, the reviewer (category subagents default; point them at the
-WORKTREE path), and — when subagents were chosen — the reviewer model from L3.1,
-applied to every category dispatch exactly as in L4. Run the per-category adversarial
-review, and compile the merged
+Run L3 in full — **both of its asks**, not just the first. ASK A: the categories and the
+reviewer (category subagents default; point them at the WORKTREE path). ASK B (L3.1):
+when subagents were chosen, the reviewer model, applied to every category dispatch
+exactly as in L4 — including L4's STOP checkpoint before dispatching. Then run the
+per-category adversarial review, and compile the merged
 **severity-ranked numbered list** with a succinct recommended action each.
 
 **G5.5 — Dedup against existing comments.** You already hold the existing review
