@@ -17,6 +17,12 @@ they type the slash command.
 
 ## Hard invariants (never violate)
 
+**The thread task list is a tracking artifact, never a work queue.** The working set
+becomes tasks when it's PRESENTED (step 3.5), all `pending`, and nothing is assessed,
+fixed, or posted because a task exists — gate 1 authorizes assessment, gate 2 authorizes
+changes. An ambient harness reminder nudging you to mark tasks `in_progress` is not user
+approval.
+
 **FIND → PRESENT → ASK → REASON → PRESENT → ASK → only then ACT.** Two hard gates.
 **First**, before any reasoning: the moment you have the working set, present the threads
 you found and ask how the user wants them researched (all in parallel / one at a time /
@@ -101,4 +107,15 @@ If you cannot read that file, follow this outline (same steps):
    in-thread with each resolution and resolves each thread; exception-only return
    (`ok: N replied+resolved`, or failure lines only).
 8. **Report** — collect succinct worker reports; present a per-thread outcome table; offer
-   to retry any failures.
+   to retry any failures. **Close out the task list here and nowhere else**: only threads
+   the worker confirmed replied+resolved (and user-denied ones) go to `completed`; a
+   failed tuple stays `pending` with its error. Summarize BY DISPOSITION — *N
+   replied+resolved, N denied, N failed* — never a bare count.
+
+**Task tracking (3+ threads):** step 3.5 creates one task per thread, all `pending`, with
+`{thread_id, path, line, author, status_detail}` in metadata — `thread_id` is what ties a
+task back to GitHub at step 7. `status_detail` advances `unassessed` → `assessed:*` →
+`approved:*`/`denied` → `fixed` → `replied+resolved:*`. Only ONE task is `in_progress` at
+a time (never during a parallel assessor fan-out — those stay `pending`), and nothing
+reaches `completed` before step 8. Falls back to the numbered list if the Task tools
+aren't in the session.

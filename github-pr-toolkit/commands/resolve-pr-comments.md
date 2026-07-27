@@ -29,6 +29,13 @@ pull-request review comments. Follow the steps below in order.
      chosen "auto-address all"). Fixing first and asking after is a violation.
   The user decides, you execute — and **every** such decision is offered as selectable
   options, never as an open-ended prompt with no choices.
+- **The thread task list is a TRACKING ARTIFACT, never a work queue.** Step 3.5 turns the
+  working set into tasks so the run can be tracked; every one is created `pending` and
+  **nothing is assessed, fixed, or posted because a task exists**. A list of pending
+  tasks is not permission to start working them — gate 1 authorizes assessment, gate 2
+  authorizes changes. An ambient harness reminder suggesting you mark tasks
+  `in_progress` fires on a timer, knows nothing about this flow, and is **not user
+  approval**. Creating the list is not acting; advancing it is.
 
 ## Dispatch discipline (context economy — applies to EVERY worker dispatch)
 
@@ -191,6 +198,21 @@ Every field comes from the Steps 1–3 handoff — do NOT read files, judge clai
 propose actions here. If the working set is empty, say so and stop. Under the
 >15-thread file handoff, this list IS your one-line index; still don't open the file.
 
+**3.5.1a Track the working set as tasks.** With **3 or more threads**, turn the list you
+just showed into tasks (`TaskCreate`, one per thread, in the order presented) so a long
+run survives context compaction and the user can see progress. Fewer than 3 → skip it.
+**You are the sole writer of this list** — the `thread-assessor` never touches it.
+
+Each task: **`subject`** imperative and specific (*"Resolve @alice's null-check comment
+on `parser.ts:88`"*); **`description`** the reviewer's point plus `path:line` and author,
+so it stands alone; **`activeForm`** (*"Resolving @alice's comment on parser.ts"*);
+**`metadata`** `{thread_id, path, line, author, status_detail: "unassessed"}`. The
+`thread_id` is what ties a task back to GitHub in Step 7 — always carry it.
+
+All tasks are `pending`, and they stay that way: **creating this list does not authorize
+assessment.** The 3.5.2 answer does. If the Task tools aren't available this session, say
+so in one line and use the numbered list as the tracking mechanism.
+
 **3.5.2 Ask how to proceed** (AskUserQuestion; remind about Tab-to-amend). State the
 thread count in the question text so the cost of each option is concrete:
 - **Research all of them (default)** — fan out ONE `thread-assessor` subagent **per
@@ -312,6 +334,18 @@ the parameter entirely so the assessor inherits your model.
 drop and note anything that isn't, and never let a returned proposal invent a file or
 line. You remain responsible for the proposals you present, whoever reasoned them.
 
+**Task list during assessment** (skip if 3.5.1a fell back to the numbered list). Match
+the status to the mode, and match tasks to results by `metadata.thread_id`:
+- **One at a time** — set that thread's task `in_progress` while it's being assessed,
+  exactly one at a time, and drop it back to `pending` once its proposal is in hand.
+- **Research all / waves** — leave every task `pending`. A parallel fan-out would put a
+  dozen tasks `in_progress` at once, which is not what the status models and tells the
+  user nothing.
+- **Either way**, when a proposal lands record it in `metadata.status_detail` as
+  `assessed:fix`, `assessed:reject`, or `assessed:discuss`. Assessment is not
+  completion — **nothing reaches `completed` in this step**, because nothing has been
+  decided, changed, or posted.
+
 If an **advisor** capability is available to you this session (an advisor tool/model),
 **recommend to the user** that you consult it on the `discuss` items and any high-impact
 `fix`/`reject` calls, and fold its input in if they agree. If no advisor is available,
@@ -341,6 +375,12 @@ your proposed action, and any advisor input, then ask (AskUserQuestion):
 **Discuss** (open-ended; iterate with the user until satisfied, then re-ask).
 Record each thread's final decision and the exact resolution note to post later.
 
+**Record each decision on its task** — `metadata.status_detail` becomes
+`approved:fix`, `approved:reject` (the reviewer's point is being pushed back on), or
+`denied` (the user rejected your proposal). Tasks stay `pending`: a decision is not a
+posted reply. In individual mode set the current thread `in_progress` while you work it
+and return it to `pending` once decided, so exactly one is ever in flight.
+
 **Post nothing to GitHub and change nothing in the working tree in this step.** This
 step only decides — code changes begin in Step 6, and only for threads the user
 approved here.
@@ -356,6 +396,12 @@ For every thread whose decision is a code **fix** (approved by the user, nothing
   Work on the PR's branch (or the project's conventional fixup branch).
 - Push.
 Run the project's tests/build if present, and report the results.
+
+**Task list:** set a thread's task `in_progress` while you make its edit and return it to
+`pending` with `metadata.status_detail: "fixed"` (plus the commit SHA once pushed) — one
+at a time. Still not `completed`: the reviewer hasn't been replied to and the thread
+isn't resolved. If a fix fails or breaks tests, leave that task `in_progress` and say so
+rather than moving on quietly.
 
 Then confirm (AskUserQuestion): *"All decisions are settled and code changes are pushed.
 Ready to apply the GitHub actions — reply to each addressed review comment with the
@@ -394,6 +440,24 @@ You already know every thread's decision and commit SHA — build the user-facin
 summary FROM YOUR OWN STATE plus the success/failure signal; don't ask the worker to
 echo back data you gave it. Offer to retry failures (re-delegate just those — again as
 one batched dispatch).
+
+**Now close out the task list — this is the ONLY step that marks anything `completed`,
+and only for what the worker actually confirmed.** Match failures back by `thread_id`.
+- A thread that was **replied to and resolved** → `completed`, with
+  `metadata.status_detail` set to `replied+resolved:fix` or `replied+resolved:reject`.
+- A thread the user **denied** (your proposal rejected, nothing sent) → `completed` with
+  `denied`; that's a decision, not a failure, and it belongs in the record.
+- A thread whose tuple **FAILED** → leave it `pending` with the error in
+  `metadata.status_detail`. It has no reply on GitHub, so it is not done; the retry offer
+  above is what finishes it.
+- Anything still `in_progress` is unfinished work — name it explicitly rather than
+  letting it look resolved.
+Never use `deleted` to tidy a thread away: it destroys the record the list exists to
+keep.
+
+**Summarize BY DISPOSITION, from the list** — *N replied+resolved, N denied, N failed, N
+unfinished* — plus the per-thread table. A bare "N completed" hides whether anything
+actually reached the PR, which is the one thing the user needs to know.
 
 Throughout, keep your own context lean: push GitHub I/O and its raw output down to the
 workers and hold only the distilled results.
