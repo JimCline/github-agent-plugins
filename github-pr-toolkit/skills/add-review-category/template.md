@@ -7,7 +7,7 @@ description: >-
   edits, executes, or tests anything.
 
 # No static `model:` — review agents DEFAULT to the SESSION model, and follow the
-# reviewer model the user picks for a given review (code-critic L3.1), which the
+# reviewer model the user picks for a given review (code-critic L3 Tab 4), which the
 # orchestrator applies via the Agent tool's dispatch-time `model` parameter. Leave
 # this out so your category runs on the same model as every other one.
 #

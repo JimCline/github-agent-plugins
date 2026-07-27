@@ -124,23 +124,25 @@ type appears in your available-agents list (new files need a new/reloaded sessio
 if a file exists but the type isn't loaded, still offer the category and note that
 review of it will fall to the advisor/main-agent path this session.
 
-**L3 MAKES TWO ASKS. Both are required before you may enter L4.**
+**ONE AskUserQuestion. FOUR tabs. All four, in a single call:**
 
-| | What | Where |
-|---|---|---|
-| **ASK A** | The four tabs: Categories / More areas / Reviewer / Advisor use | below |
-| **ASK B** | The reviewer model — *when ASK A's Tab 3 chose category subagents* | L3.1 |
+| Tab | What |
+|---|---|
+| **1** | Categories |
+| **2** | More areas |
+| **3** | Reviewer — who reviews, and whether they consult the advisor |
+| **4** | **Reviewer model** |
 
-ASK B is a **separate AskUserQuestion call**, never a fifth tab: AskUserQuestion takes
-at most FOUR questions per call and ASK A already uses all four. Making ASK A and then
-walking into L4 is the failure mode this table exists to prevent — the user ends up
-with reviewers on a model they were never offered a choice about.
+**Tab 4 is not optional and is never dropped.** It ships in the same call as the other
+three precisely so it cannot be forgotten: AskUserQuestion allows at most four questions
+per call, so the model is a TAB, not a follow-up ask. Do not "save it for after" — a
+second round trip is exactly how this ask got skipped before. If you are about to send
+this call with three tabs, you have made the mistake.
 
-**ASK A's shape.** With no custom categories: ONE AskUserQuestion with the four tabs
-below. With custom categories: split it — first the category tabs (Tabs 1–2 plus one or
-more "Custom" tabs listing the custom categories, ≤4 options per tab), then the Reviewer
-and Advisor tabs. In that case fold ASK B into the second call rather than adding a
-third round trip. (Remind about Tab-to-amend either way.)
+**With custom categories** the category list needs extra tabs, so split into TWO calls:
+first the category tabs (Tabs 1–2 plus one or more "Custom" tabs, ≤4 options per tab),
+then a second call carrying **both** Tab 3 and Tab 4 together. Never a third call, and
+never Tab 3 without Tab 4. (Remind about Tab-to-amend either way.)
 
 **Tab 1 — "Categories" (multiSelect).** *"Which review categories? Selecting all
 (across both tabs) is the default."*
@@ -163,42 +165,37 @@ third round trip. (Remind about Tab-to-amend either way.)
 If the user selects nothing on a tab, that's fine; if they select nothing on ANY
 category tab, treat it as **all built-in six plus every custom category**.
 
-**Tab 3 — "Reviewer".** *"Are review subagents allowed?"*
-- **Category subagents (default)** — one `code-reviewer-<category>` subagent per
-  selected category, run in parallel. *(You pick the model they all run on next.)*
+**Tab 3 — "Reviewer".** *"Who performs the review?"* This tab carries the advisor
+choice too — second opinions used to be their own tab, and folding them in here is what
+frees the fourth slot for the model.
+- **Category subagents, consulting the advisor (default)** — one
+  `code-reviewer-<category>` subagent per selected category, run in parallel, each
+  taking borderline and high-severity findings to the advisor before finalizing.
+- **Category subagents, working independently** — the same fan-out, no second
+  opinions; findings stand on the reviewers' own reasoning.
 - **The advisor** — hand the diffs to the `advisor` tool for one independent pass
-  covering the selected categories. *(If no advisor is available this session, say so
-  and fall back.)*
-- **The main agent (you)** — you perform the adversarial review yourself, covering
-  the selected categories.
+  covering the selected categories.
+- **The main agent (you)** — you perform the adversarial review yourself, consulting
+  the advisor on borderline and high-severity findings.
 
-**Tab 4 — "Advisor use".** *"Should the reviewer(s) consult the advisor for second
-opinions during the review?"* (Moot if the advisor IS the reviewer — say so in the
-question text when relevant. If no advisor is available this session, skip this tab
-and note it.)
-- **Consult the advisor (default)** — the reviewer(s) get a second opinion on
-  borderline or high-severity findings before finalizing them.
-- **No — independent review** — the reviewer(s) work alone; findings stand on their
-  own reasoning.
+*If no advisor is available this session*, say so in one line and offer the two
+non-advisor paths (subagents working independently, or you reviewing alone) instead of
+the four above. If the user wants the main agent to review WITHOUT advisor consultation,
+that's an **Other** answer — honor it.
 
-### L3.1 — ASK B: the reviewer model
-
-**This is the second of L3's two required asks. Do not leave L3 without having made
-it** (or having established that it does not apply). Ask it **when Tab 3 chose category
-subagents** — that is the one path where the model is selectable at all (the advisor
-runs on its own fixed model; "the main agent" IS the session model, so there is nothing
-to pick). If Tab 3 chose advisor or main agent, say in one line that the model choice
-doesn't apply and move on.
-
-A SEPARATE one-question AskUserQuestion: *"Which model should the review subagents run
-on? One model runs every selected category."* The choice applies uniformly — pick Opus
-and ALL the dispatched `code-reviewer-*` subagents run on Opus, one per selected
-category.
+**Tab 4 — "Reviewer model".** *"Which model should the review subagents run on? One
+model runs every selected category."* Always present this tab. It governs the subagent
+paths; if the user picked the advisor or the main agent in Tab 3, note in one line that
+their answer here doesn't apply and move on — do NOT drop the tab to avoid the moot
+case, because a dropped tab is how this ask went missing in the first place.
 - **Default (model I'm using)** — every reviewer inherits the model running this
   session.
 - **Opus** — highest-reasoning pass.
 - **Sonnet** — faster and cheaper per category; a step down in reasoning depth.
 - **Fable** — the Mythos-class alternative.
+
+The choice applies uniformly — pick Opus and ALL the dispatched `code-reviewer-*`
+subagents run on Opus, one per selected category.
 
 Pass the choice through as the Agent tool's dispatch-time `model` parameter, which
 overrides agent frontmatter. **Use the bare aliases only** — `opus`, `sonnet`, `fable`
@@ -212,7 +209,7 @@ of this flow. If the user picks a model below the session's, tell them once that
 trades review depth for speed/cost — then honor the choice without re-litigating it.
 Never pin reviewers to Haiku; it is not offered here for that reason.
 
-### L3.2 — Adherence prerequisite (only if that category is selected)
+### L3.1 — Adherence prerequisite (only if that category is selected)
 
 Check for project directives — `CLAUDE.md` (root and relevant subdirs),
 `.claude/rules/`, contributing docs, lint/format configs. If none exist, ask
@@ -227,26 +224,27 @@ can't be fully confirmed from the diff is still a finding: mark it *uncertain �
 confirming needs `<X>`* and carry it into the list.
 
 **STOP — checkpoint before any subagent dispatch.** If category subagents were chosen
-and you have **no answer from L3.1's ASK B**, you skipped a required ask. Do not guess a
-model and do not dispatch: go make that ask now, then continue. Dispatching reviewers on
-a model the user was never offered is a violation of L3, not a shortcut.
+and you have **no answer from L3's Tab 4 (Reviewer model)**, you sent that ask without
+its fourth tab. Do not guess a model and do not dispatch: ask for the model now, then
+continue. Dispatching reviewers on a model the user was never offered is a violation of
+L3, not a shortcut.
 
 **If category subagents were chosen:** dispatch ONE `code-reviewer-<category>` agent per
 selected category (the built-ins — general / security / design / adherence /
 performance / tests — use the plugin-prefixed type; customs use their bare type from
 the agents list) — all in a SINGLE message so they run in parallel. **Set the Agent
-tool's `model` parameter on EVERY one of these dispatches to the L3.1 alias** (`opus` /
+tool's `model` parameter on EVERY one of these dispatches to the Tab 4 alias** (`opus` /
 `sonnet` / `fable`) so all categories review on the one model the user picked — customs
 included, since the override applies to any agent type and takes precedence over
 frontmatter (a custom file that shipped its own `model:` pin is intentionally
-overridden by the user's choice). If L3.1 chose **Default (model I'm using)**, omit the
+overridden by the user's choice). If Tab 4 chose **Default (model I'm using)**, omit the
 parameter entirely and let them inherit. Never mix models across categories in a single review. A selected custom
 category whose agent type isn't loaded this session gets covered by YOU instead:
 `Read` its file's checklist and fold it into a main-agent pass alongside the subagent
 dispatches; tell the user that's what happened. Each dispatch is minimal and self-contained:
 the repo (or worktree) absolute path, the exact base spec you diffed
 (`origin/<base>...HEAD` or `<ref>...HEAD`), the changed-file list from your `--stat`,
-the **advisor directive** from Tab 4 (`advisor: consult` or `advisor: none` — one
+the **advisor directive** from Tab 3 (`advisor: consult` or `advisor: none` — one
 line, always present so the agent never guesses), and — for the adherence agent — the
 directive files found (or the infer/user-guidance outcome) from L3. Each agent recomputes the diff with the same read-only git and returns
 findings in the fixed shape its definition specifies. **Cross-check every returned
@@ -370,11 +368,11 @@ As in L2, with your own read-only git inside the worktree:
 not compute.
 
 ## G3–G5 — Review (same as L3–L5), then dedup against existing comments
-Run L3 in full — **both of its asks**, not just the first. ASK A: the categories and the
-reviewer (category subagents default; point them at the WORKTREE path). ASK B (L3.1):
-when subagents were chosen, the reviewer model, applied to every category dispatch
-exactly as in L4 — including L4's STOP checkpoint before dispatching. Then run the
-per-category adversarial review, and compile the merged
+Run L3 in full — **all FOUR tabs in one AskUserQuestion**, not three. Categories / More
+areas / Reviewer (category subagents default; point them at the WORKTREE path) /
+**Reviewer model**. Sending that call without the model tab is the failure this flow
+had; L4's STOP checkpoint catches it before any dispatch. Then run the per-category
+adversarial review, and compile the merged
 **severity-ranked numbered list** with a succinct recommended action each.
 
 **G5.5 — Dedup against existing comments.** You already hold the existing review

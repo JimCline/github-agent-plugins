@@ -10,7 +10,7 @@ description: >-
 # No static `model:` — reviewers DEFAULT to the SESSION model. Reasoning over a diff
 # is the hard part of this flow; only the I/O workers (critic-worker, github-worker)
 # are pinned to Haiku. The user may choose a different reviewer model per review
-# (code-critic L3.1); the orchestrator applies it uniformly to every category via
+# (code-critic L3 Tab 4); the orchestrator applies it uniformly to every category via
 # the Agent tool's dispatch-time `model` parameter, which overrides frontmatter. Do
 # NOT add a static `model:` here — it would pin one category out of step with the
 # rest and silently contradict that choice.

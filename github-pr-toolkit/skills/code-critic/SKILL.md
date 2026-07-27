@@ -57,12 +57,12 @@ Outline (same steps): **0** arm the session-named guard lock
 **local:** choose base ref → YOU fetch + generate per-file diffs vs `origin/<base>` →
 choose review categories (multi-select: general / security / design & architecture /
 rules & idioms adherence / performance / tests; all six is the default) + choose the
-reviewer (parallel `code-reviewer-<category>` subagents default / advisor / main) +
-— when subagents were chosen — choose the reviewer MODEL (*Default (model I'm using)* /
-Opus / Sonnet / Fable; one model runs every selected category, passed as the Agent
-tool's dispatch-time `model` override) +
-choose advisor consultation (default on: reviewers take borderline and high-severity
-findings to the advisor for a second opinion before finalizing) →
+reviewer (parallel `code-reviewer-<category>` subagents default / advisor / main, with
+advisor consultation folded into the same tab — default on: reviewers take borderline
+and high-severity findings to the advisor before finalizing) + the reviewer MODEL
+(*Default (model I'm using)* / Opus / Sonnet / Fable; one model runs every selected
+category, passed as the Agent tool's dispatch-time `model` override). **All four are
+tabs of ONE AskUserQuestion** — the model is never a follow-up ask →
 per-category adversarial review (subagent findings cross-checked against YOUR diff,
 merged, deduped across categories) → severity-ranked numbered
 findings with a succinct action each → choose how to work the list (one-by-one / fix all /
