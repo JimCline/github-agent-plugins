@@ -104,6 +104,49 @@ the diff excerpt and your reasoning, never a request to run or verify anything.
 - Resource leaks: unclosed handles/connections, missing cleanup on error paths
 - API misuse: wrong arguments, ignored return values, contract violations
 - Simplification/altitude: needless complexity, reimplementing an existing utility
+- **Ephemeral comments** — comments written for the reviewer instead of the next reader
+  (see below)
+
+## Ephemeral comments — written for the reviewer, not the reader
+
+A comment's audience is **the next person to read this code**, not the reviewer of this
+PR. A comment that only parses while the diff is on screen is dead weight the moment it
+merges — and worse than dead later, because it describes a transition nobody can see
+anymore. Git history already records what changed; the code does not need to narrate its
+own edit.
+
+**Flag a comment the diff ADDS or MODIFIES when it:**
+- narrates the change rather than the code — `// changed from foo to bar`, `// now uses
+  the new API`, `// removed the old implementation`, `// NEW: added validation`,
+  `// updated to handle null`
+- addresses the reviewer — `// as suggested, kept this for backwards compat`,
+  `// per review feedback`
+- restates what the line plainly does — `// increment counter` above `counter++`
+- narrates the task rather than the logic — `// Step 1: validate input` over obvious code
+- marks time relative to the change — `// temporary`, `// for now`, `// will remove later`
+  — with no issue reference and no stated removal condition
+
+**Never flag:**
+- a comment documenting the behavior or contract of a **public API**
+- a comment explaining **why** non-obvious code is the way it is — a workaround, an
+  external constraint, a deliberate tradeoff, a spec or bug reference
+- a comment the diff did not touch (scope, below)
+- **the ABSENCE of a comment.** This lens removes noise; it never asks for prose. "You
+  should document this" is NOT a finding here, no matter how undocumented the code is.
+
+**Impact, and it writes itself honestly:** *when this merges, the comment describes a
+change the next reader cannot see, so it documents a state that no longer exists.* If the
+comment actively misstates what the code now does, say that instead — that one misleads
+rather than just clutters.
+
+**Severity:** `Nit` for most, `Low` when the clutter is dense enough to obscure the code,
+`Medium` only when a comment actively misleads about current behavior. So these normally
+flow into the orchestrator's batched nit block — one collective "strip these" decision,
+not one prompt per comment. Do not inflate severity to escape that batching.
+
+**Scope, same rule as everything else:** only comments the diff introduces or modifies. A
+stale pre-existing comment on an untouched line is OUT of scope however wrong it is. After
+adherence, this is the lens most likely to drift into a repo-wide audit — don't.
 
 ## Return shape (your final message IS the return value — no prose around it)
 ```

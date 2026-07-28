@@ -157,7 +157,7 @@ never Tab 3 without Tab 4. (Remind about Tab-to-amend either way.)
 **Tab 1 — "Categories" (multiSelect).** *"Which review categories? Selecting all
 (across both tabs) is the default."*
 - **General Review** — correctness bugs, edge cases, error handling, concurrency,
-  resource leaks, API misuse, simplification/altitude issues.
+  resource leaks, API misuse, simplification/altitude issues, **ephemeral comments**.
 - **Security Review** — injection, authn/authz gaps, secrets in code, unsafe
   deserialization, path traversal, SSRF, crypto misuse, trust-boundary violations.
 - **Design & Architecture** — coupling, cohesion, layering violations, leaky
@@ -174,6 +174,30 @@ never Tab 3 without Tab 4. (Remind about Tab-to-amend either way.)
 
 If the user selects nothing on a tab, that's fine; if they select nothing on ANY
 category tab, treat it as **all built-in six plus every custom category**.
+
+**Ephemeral comments (part of General Review — binds every review path).** A comment's
+audience is the **next reader of the code**, not the reviewer of this PR. A comment that
+only parses while the diff is on screen is dead weight once it merges, and worse than dead
+later, because it describes a transition nobody can see. Git history already records what
+changed.
+
+| Flag when the diff adds/modifies a comment that… | Never flag |
+|---|---|
+| narrates the change — `// changed from foo to bar`, `// NEW: added validation`, `// now uses the new API` | a public API's behavior/contract |
+| addresses the reviewer — `// as suggested, kept for backwards compat` | **why** non-obvious code is that way — a workaround, constraint, tradeoff, spec/bug ref |
+| restates the line — `// increment counter` over `counter++` | a comment the diff didn't touch |
+| narrates the task — `// Step 1: validate input` over obvious code | **the ABSENCE of a comment** |
+| marks time — `// temporary`, `// for now`, with no issue ref or removal condition | |
+
+**This lens never asks for prose.** "You should document this" is not a finding, however
+undocumented the code is — a lens that demands comments becomes its own noise generator.
+Impact is *when this merges, the comment describes a change the next reader cannot see, so
+it documents a state that no longer exists*; if the comment actively misstates current
+behavior, say that instead. Severity is `Nit` for most, `Low` when the clutter obscures
+the code, `Medium` only for actively misleading — so these normally arrive in the batched
+nit block as one collective "strip these" decision. Scope is the usual rule: only comments
+the diff introduces or modifies. After adherence, this is the lens most prone to becoming
+a repo-wide audit.
 
 **Tab 3 — "Reviewer".** *"Who performs the review?"* This tab carries the advisor
 choice too — second opinions used to be their own tab, and folding them in here is what

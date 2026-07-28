@@ -115,6 +115,31 @@ reads back.
 Reviewers are never told the tone — subagents return factual findings and the orchestrator
 renders. So the tone can change mid-review without re-running anything.
 
+### Ephemeral comments
+
+Part of **General Review**. A code comment's audience is the *next person to read the
+code*, not the reviewer of this PR — and LLM-written code is full of comments that only
+make sense while the diff is on screen. Once it merges, `// changed from foo to bar`
+describes a transition nobody can see. Git history already records what changed.
+
+| Flagged | Never flagged |
+|---|---|
+| `// changed from foo to bar`, `// NEW: added validation`, `// now uses the new API` | a public API's documented behavior or contract |
+| `// as suggested, kept this for backwards compat` | **why** non-obvious code is that way — a workaround, constraint, tradeoff, spec/bug reference |
+| `// increment counter` above `counter++` | any comment the diff didn't touch |
+| `// Step 1: validate input` over obvious code | **the absence of a comment** |
+| `// temporary` / `// for now`, with no issue ref or removal condition | |
+
+**It never asks for prose.** "You should document this" is not a finding here, however
+undocumented the code — a lens that demands comments becomes its own noise generator. It
+only removes what the diff added.
+
+These are `Nit` for the most part (`Low` when the clutter obscures the code, `Medium` only
+when a comment actively misstates current behavior), so they arrive in the batched nit
+block: one collective *strip these* decision rather than a prompt per comment. And like
+every other lens it's scoped to the change — a stale pre-existing comment on an untouched
+line stays out, however wrong it is.
+
 ### Signal, not quota
 
 A finding has to matter. The bar is one question — **what goes wrong if this ships?** —

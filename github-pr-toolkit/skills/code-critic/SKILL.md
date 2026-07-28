@@ -73,6 +73,14 @@ review** — never pad, never re-sweep at a lower bar; there is a defined clean-
 ONE ask rather than looped per item. This is never a licence to stay quiet: everything
 that clears the bar is reported at its true severity.
 
+**Ephemeral comments are in scope (part of General Review).** A comment's audience is the
+next reader of the code, not this PR's reviewer. Flag comments the diff adds/modifies that
+narrate the change (`// changed from foo to bar`, `// NEW:`), address the reviewer, restate
+the line, or mark time (`// for now`) with no issue ref. Never flag a public-API contract
+note, a why-this-is-non-obvious explanation, an untouched comment, or **the absence of a
+comment** — this lens removes noise and never asks for prose. Mostly `Nit`/`Low`, so they
+ride the batched nit block; `Medium` only when a comment actively misstates behavior.
+
 **Review the CHANGE, not the codebase.** A finding is in scope only if the diff
 **introduces** it, or **newly exposes/worsens** it (and then the finding must say how).
 Pre-existing defects, old design decisions, and untouched code in a file the diff happens
