@@ -447,13 +447,13 @@ anything.
 impact are identical in each — only the framing moves:
 
 > *Terse* —
-> **[Critical]** Unchecked null deref on the new error path.
+> 🔴 **CRITICAL** — unchecked null deref on the new error path.
 > **Impact:** when the upstream call times out, `resolve()` returns `null` and this throws
 > instead of returning the 503 the caller expects.
 > Guard the return before `.parse()`.
 
 > *Balanced (default)* —
-> **[Critical]** Unchecked null deref on the new error path.
+> 🔴 **CRITICAL** — unchecked null deref on the new error path.
 > **Impact:** when the upstream call times out, `resolve()` returns `null` and this throws
 > instead of returning the 503 the caller expects.
 > The new error path assumes `resolve()` always returns a value. Guarding the return before
@@ -461,7 +461,7 @@ impact are identical in each — only the framing moves:
 > already catches keeps `null` out of the signature.
 
 > *Suggestion* —
-> **[Critical]** Unchecked null deref on the new error path.
+> 🔴 **CRITICAL** — unchecked null deref on the new error path.
 > **Impact:** when the upstream call times out, `resolve()` returns `null` and this throws
 > instead of returning the 503 the caller expects.
 > It looks like the timeout case was meant to fall through to the 503 here — a guard on the
@@ -495,6 +495,47 @@ Never quietly drop or soften a severity between the reviewer's return and what t
 sees. If you disagree with a reviewer's rating, present the change explicitly —
 *"reviewer said High; I've marked this Medium because …"* — rather than silently
 re-grading it.
+
+#### In a POSTED PR comment, severity leads as a colour-coded banner
+
+Every comment body you draft in G6 **opens with a severity banner — the first line, above
+any prose**:
+
+| Severity | Banner |
+|---|---|
+| Critical | 🔴 **CRITICAL** |
+| High | 🟠 **HIGH** |
+| Medium | 🟡 **MEDIUM** |
+| Low | 🔵 **LOW** |
+| Nit | ⚪ **NIT** |
+
+Full shape — banner, blank line, impact, blank line, action:
+
+```
+🔴 **CRITICAL** — unchecked null deref on the new error path
+
+**Impact:** when the upstream call times out, `resolve()` returns `null` and this throws
+instead of returning the 503 the caller expects.
+
+Guard the return before `.parse()`.
+```
+
+**Why emoji rather than a GitHub alert or a badge image.** Alerts (`> [!CAUTION]`) are not
+verified to render in *inline review comments* — a sweep of ~10k such comments found zero
+using them — and an alert that doesn't render shows the reader a literal `[!CAUTION]` line.
+Shields.io badges do work here but add an external image request per comment, which breaks
+on air-gapped Enterprise and can serve stale content through GitHub's camo proxy. Emoji
+render identically in the web UI, email notifications, the REST API, and a terminal, with
+nothing to fetch. Do not "upgrade" this to an alert block or a badge.
+
+**The word is not optional.** The emoji is additive; `**CRITICAL**` stays in text beside
+it. Colour alone must never carry the severity — the comment gets read through email, the
+API, and by people who can't distinguish the dots. This is ALWAYS SHOW SEVERITY extended
+past the web UI, not a replacement for it.
+
+**The banner is structural, so tone never touches it.** All three feedback tones emit the
+identical banner line; tone shapes only the prose beneath it. In-session rendering keeps
+the `[Critical]` bracket form — the banner is for the posted artifact.
 
 **Last scope filter before anything is presented.** Every surviving finding must be
 `introduced-by-diff`, or `newly-exposed-by-diff` *with the exposure stated*. Drop the
@@ -707,7 +748,11 @@ too, not just the prose) plus **its `impact:` line**, including any *already fla
 annotation with the existing comment quoted briefly, then ask (AskUserQuestion). Severity
 and impact both belong in the drafted comment `body` you propose: a reviewer reading it
 on GitHub has none of this context either, and "here's what breaks" is what makes a
-review comment actionable rather than an opinion. **Draft the body in the resolved
+review comment actionable rather than an opinion. **Every body opens with the colour-coded
+severity banner** (🔴 **CRITICAL** / 🟠 **HIGH** / 🟡 **MEDIUM** / 🔵 **LOW** / ⚪ **NIT**)
+as its first line, above the prose — see "In a POSTED PR comment" under ALWAYS SHOW
+SEVERITY for the full shape and why it is emoji rather than an alert block or a badge
+image. **Draft the body in the resolved
 feedback tone** (see FEEDBACK TONE in L5) — these comments are the surface that tone
 exists for, since they are read by someone who wasn't in this session. The severity
 label, the `file:line`, and the impact line are identical in all three tones; only the

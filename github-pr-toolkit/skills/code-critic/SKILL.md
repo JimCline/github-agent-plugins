@@ -43,6 +43,16 @@ the closing summary. Ordering conveys severity in the full list and nowhere else
 moment a finding is shown alone the ranking is gone. Never silently re-grade a reviewer's
 severity — if you disagree, say so explicitly.
 
+**In a POSTED PR comment, severity leads as a colour-coded banner** — the FIRST line of
+every drafted body, above the prose: 🔴 **CRITICAL** / 🟠 **HIGH** / 🟡 **MEDIUM** /
+🔵 **LOW** / ⚪ **NIT**, then a blank line, the `**Impact:**` line, and the action. Emoji
+deliberately, NOT a `> [!CAUTION]` alert (unverified in inline review comments — a sweep
+of ~10k found none, and an alert that fails shows literal `[!CAUTION]` text) and NOT a
+shields.io badge (external request per comment; breaks air-gapped, camo can serve stale).
+Emoji render the same in the web UI, email, the API, and a terminal. The severity WORD
+always accompanies the dot — colour alone never carries it. The banner is structural, so
+all three feedback tones emit it identically; in-session rendering keeps `[Critical]`.
+
 **Feedback tone is a SETTING, never an ask:** `${user_config.review_tone}`. Resolve per the
 command file's FEEDBACK TONE section — explicit session instruction > `--tone` argument >
 this setting > **Balanced**. If that placeholder arrives unresolved, or holds anything but

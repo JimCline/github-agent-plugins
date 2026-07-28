@@ -141,6 +141,38 @@ None of this is licence to stay quiet. The bar decides what counts as a finding;
 justifies withholding or softening one that clears it, and severity is never graded down
 to look less noisy.
 
+### Posted comments lead with a colour-coded severity banner
+
+Every inline comment code-critic drafts onto a PR opens with its severity as the first
+line, above the prose:
+
+| Severity | Banner | | Severity | Banner |
+|---|---|---|---|---|
+| Critical | 🔴 **CRITICAL** | | Low | 🔵 **LOW** |
+| High | 🟠 **HIGH** | | Nit | ⚪ **NIT** |
+| Medium | 🟡 **MEDIUM** | | | |
+
+```
+🔴 **CRITICAL** — unchecked null deref on the new error path
+
+**Impact:** when the upstream call times out, `resolve()` returns `null` and this throws
+instead of returning the 503 the caller expects.
+
+Guard the return before `.parse()`.
+```
+
+**Emoji, deliberately — not an alert block or a badge image.** GitHub alerts
+(`> [!CAUTION]`) aren't verified to render in *inline review comments*; a sweep of ~10,000
+of them found zero using alerts, and an alert that doesn't render shows the reader a
+literal `[!CAUTION]` line. Shields.io badges do work in this surface, but cost an external
+image request per comment — which breaks on air-gapped GitHub Enterprise and can serve
+stale content through GitHub's camo proxy. Emoji render identically in the web UI, email
+notifications, the REST API, and a terminal, and fetch nothing.
+
+The severity **word** always sits beside the dot. Colour never carries the meaning alone —
+the comment gets read through email, through the API, and by people who can't distinguish
+the dots. Feedback tone shapes the prose beneath the banner but never the banner itself.
+
 ### What gets reviewed
 
 **The change, not the codebase.** A finding is in scope only if the diff *introduces* it,
