@@ -260,6 +260,51 @@ cite the diff. A `file:line` inside a hunk is NOT sufficient evidence of scope.
 If the user explicitly asks for a broader review, that's their call — honor it and say
 you've widened the scope. Absent that, stay on the change.
 
+### What is WORTH REPORTING (applies to ALL three review paths — subagents, advisor, and you)
+
+**This is a quality review, not a quota.** A finding earns its place by mattering, not by
+existing. The test is one question: **what goes wrong if this ships?** Answer it
+concretely and it is a finding — wrong output, data loss, a security hole, a crash, a
+race, a silent failure someone will later debug blind, an error message that points at
+the wrong cause, a regression this change now leaves uncaught, a contract callers will
+predictably misuse, a stated project directive contradicted. If the honest answer is
+"nothing, but I'd have written it differently", it is not a finding.
+
+So **every finding carries an `impact:` line** — a real field in the return shape, in the
+form **`when <trigger>, <observable consequence>`** — and it must justify the severity
+above it. The trigger is the point: it is checkable against the diff, where an adjective
+is not. *"when the list is empty, this throws"* and *"when a variant is added to this
+switch, the audit-log write is silently skipped"* are impacts. *"might cause issues"*,
+*"not ideal"*, *"bad practice"* name neither a trigger nor a failure, and are the tell
+that no consequence was found. **A conditional consequence is still a consequence** —
+"could be a problem someday" is noise only when the someday is unnamed.
+
+**Finding nothing is a successful review.** `findings: none` on a clean diff is a
+complete, correct result — not a failed dispatch, and not a cue to lower the bar and
+sweep again. The pressure runs the other way by construction: several reviewers, one
+small diff, each inclined to justify its own dispatch. Cancelling that pressure is what
+this rule is for.
+
+**Nits are allowed — and must be labeled `Nit`.** A genuine small thing (a typo in a new
+comment, a name inconsistent with its neighbors) is fine at `severity: Nit`, and Nit is
+the one severity exempt from the ships-test: write `impact: nit — no shipping
+consequence`. Two rules keep that exemption honest. Don't grade a nit up to `Low` to make
+the list look weightier — `Low` is load-bearing. And `Nit` is not where a doubtful
+finding goes to survive: it is for things that are true and tiny, not things you are
+unsure of.
+
+**This is not a licence to stay quiet.** The bar governs what counts as a finding; it is
+never a reason to withhold or soften one that clears it. Never drop a real defect to keep
+a list short, and never grade a severity down to seem less noisy — see **ALWAYS SHOW
+SEVERITY** in L5, which forbids silent re-grading in either direction. A Critical is a
+Critical on a list of one.
+
+**Uncertainty and impact are different axes.** *Uncertain* is about whether a finding is
+REAL; *impact* is about whether it MATTERS. A finding you cannot confirm from the diff
+but that would be serious if true stays in the list, marked uncertain (L4's opening
+rule) — state its impact conditionally: what goes wrong *if it is real*. A finding you
+are certain about that breaks nothing is the one to drop.
+
 **STOP — checkpoint before any subagent dispatch.** If category subagents were chosen
 and you have **no answer from L3's Tab 4 (Reviewer model)**, you sent that ask without
 its fourth tab. Do not guess a model and do not dispatch: ask for the model now, then
@@ -298,14 +343,19 @@ location.** Two tests, and a finding must pass both:
 Checking (1) alone is what lets pre-existing code through, since context lines live
 inside hunks. You remain responsible for the merged result.
 
+**A category that returns `findings: none` is finished.** Do not re-dispatch it, do not
+nudge it to look harder, and do not go hunting in its lane yourself. An empty category is
+a result — report it as reviewed and clean.
+
 **If the advisor or you review:** run one adversarial pass restricted to the union of
 the selected categories' checklists (built-ins as itemized in L3; for a custom
 category, `Read` the checklist from its agent file) **and to the scope rule above —
 introduced-by-diff, or newly-exposed-by-diff with the exposure stated.** This path has
 no subagent return to cross-check, so the discipline has to hold as you review: before
 writing a finding, name which changed line puts it in scope. If delegating to the
-advisor, tell it the same — static review, scoped to the change, surface uncertainty, do
-not execute anything. If YOU review and Tab 3 chose consultation, take your borderline
+advisor, tell it the same — static review, scoped to the change, **held to the
+WORTH-REPORTING bar above** (impact line included), surface uncertainty, do not execute
+anything. If YOU review and Tab 3 chose consultation, take your borderline
 and high-severity findings to the advisor before finalizing and record its
 concurrence/dissent per finding.
 
@@ -316,9 +366,38 @@ category, and carrying its `scope:`.
 You (main) merge the findings — when category subagents ran, first **dedup across
 categories** (the same defect often surfaces under two lenses; keep one entry, note both
 category tags) — into a **numbered list ordered by severity/concern**
-(e.g. Critical → High → Medium → Low/Nit). Each item: its **severity**, a one-line
-problem statement, the `file:line`, the category tag(s), and a **succinct recommended
-action**.
+(Critical → High → Medium → Low → Nit). Each item: its **severity**, a one-line
+problem statement, the `file:line`, its **`impact:` line**, the category tag(s), and a
+**succinct recommended action**.
+
+**Dedup on the defect, not on the impact wording.** The same defect under two lenses now
+arrives with two differently-worded impact lines, which makes near-duplicates look more
+distinct than they are. Match on `file:line` + the underlying defect; near-duplicates —
+the same problem reframed under a second lens — merge into one finding carrying both
+category tags.
+
+**Impact filter — demote or drop, announced and counted.** A finding whose `impact:`
+names no trigger and no failure has not cleared the bar (Nit is exempt; see L4). Before
+acting on that, ask whether YOU can name the consequence: a lazy impact line on a real
+defect gets its line rewritten, not the finding dropped. Only if no one can name a
+consequence does it demote to `Nit` or drop — demotions are announced per ALWAYS SHOW
+SEVERITY, never silent, and drops are counted in the same one-line note as scope drops
+("dropped 2 for scope, 1 for impact").
+
+**L5.0 — If nothing clears the bar, the review is DONE and it succeeded.** Trigger on the
+POST-triage list being empty — whether the reviewers returned nothing, or everything they
+returned was dropped for scope/impact. Report it plainly and specifically: the categories
+that ran, the base spec, the file count, and the drop note if anything was dropped
+("reviewed clean; 3 findings dropped for scope"). "Reviewed and clean" must never read as
+"the review didn't happen", and a silent clean over dropped findings violates the
+disclosure rule above. Then STOP: create no task list, skip L6 and L7, remove the
+assessment marker AND the session lock (Step 0), and close out — with no findings there
+are no fixes, so L8 has nothing to commit. Do not go looking for something to report to
+fill the silence.
+
+In the **GitHub PR flow** the trigger is the same, with one difference: the worktree still
+exists. Report clean, then dispatch G7's CLEANUP (its zero-comments variant) to remove it.
+Closing out directly leaks the worktree.
 
 ### ALWAYS SHOW SEVERITY — every time a finding is displayed, anywhere
 
@@ -348,7 +427,15 @@ you dropped anything for scope, say how many in one line: silently discarding a
 reviewer's work is worse than a one-line note, and it tells the user whether the
 reviewers are drifting.
 
-**L5.1 — Create the task list.** With **3 or more findings**, turn the presented list
+**Nits are batched, never looped.** Nit-severity findings get no tasks (L5.1) and do NOT
+enter the L7/G6 one-by-one loop. Present them as one collapsed block beneath the ranked
+list, each still led by `[Nit]` and its `file:line`, and ask about them ONCE — apply all /
+skip all / pick from the list. Three nits should cost one interaction, not three; that
+per-item cost is what turns a technically-valid nit into noise. They are counted
+separately everywhere they're reported ("4 findings + 3 nits"), so a padded nit block can
+never inflate the finding count.
+
+**L5.1 — Create the task list.** With **3 or more non-Nit findings**, turn the presented list
 into tasks (`TaskCreate`, one per finding, in the order you present them) so the review
 survives a long working session and the user can see progress. Fewer than 3 → skip it;
 a two-item list is noise. **You are the sole writer of this list** — the review
@@ -391,8 +478,11 @@ instead of falling back to "Other".
 Take the agreed action per issue — make the fixes in the working tree (your `Edit`/`Write`,
 which are not gated). In one-by-one mode, loop: show the issue **led by its severity**
 (per L5's rule — the user is deciding on this issue alone, with the ranked list no longer
-in front of them) plus the recommended action, ask Approve / Skip / Modify, then apply.
-Carry the severity into the AskUserQuestion itself, not just the prose above it.
+in front of them) plus **its `impact:` line** and the recommended action, ask Approve /
+Skip / Modify, then apply. Carry the severity into the AskUserQuestion itself, not just
+the prose above it. The impact is what the user is actually weighing — it was required of
+the reviewer for this moment, so never generate it and then withhold it here. Nits don't
+enter this loop; they were handled as one batch in L5.
 
 **Drive the task list as you go** (skip this if L5.1 fell back to the numbered list):
 - **One task `in_progress` at a time.** Set it when you start that issue, and resolve it
@@ -528,11 +618,13 @@ The findings are now presented and deduped — the assessment phase is over, so 
 assessment marker** (`rm -f "$PWD/.git/code-critic-${CLAUDE_CODE_SESSION_ID:-}.assessing"`;
 bare variant under the fallback) before entering the loop. The session lock stays until
 final exit.
-Loop over the list one at a time. For each, show the issue **led by its severity** (per
-L5's rule — carry it into the AskUserQuestion too, not just the prose), including any
-*already flagged* annotation with the existing comment quoted briefly, then ask
-(AskUserQuestion). Severity also belongs in the drafted comment `body` you propose: a
-reviewer reading it on GitHub has none of this context either. Tell the user they can press **Tab on an option to amend it** — e.g.
+Loop over the list one at a time (Nits excepted — they were batched in L5). For each,
+show the issue **led by its severity** (per L5's rule — carry it into the AskUserQuestion
+too, not just the prose) plus **its `impact:` line**, including any *already flagged*
+annotation with the existing comment quoted briefly, then ask (AskUserQuestion). Severity
+and impact both belong in the drafted comment `body` you propose: a reviewer reading it
+on GitHub has none of this context either, and "here's what breaks" is what makes a
+review comment actionable rather than an opinion. Tell the user they can press **Tab on an option to amend it** — e.g.
 tweak the proposed comment wording before it's posted. Options, ordered so the
 recommended one is first:
 - **If the issue is NOT already flagged** → recommend **queueing the comment**: show the

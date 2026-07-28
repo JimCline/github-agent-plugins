@@ -43,6 +43,17 @@ the closing summary. Ordering conveys severity in the full list and nowhere else
 moment a finding is shown alone the ranking is gone. Never silently re-grade a reviewer's
 severity — if you disagree, say so explicitly.
 
+**Signal, not quota — a quality review, not a count.** A finding earns its place by
+mattering: **what goes wrong if this ships?** Every finding carries an `impact:` line as
+`when <trigger>, <observable consequence>` that justifies its severity; "bad practice" /
+"might cause issues" names neither, and triage demotes or drops those (announced and
+counted) — after first checking whether YOU can name the consequence, since a lazy impact
+line on a real defect gets rewritten, not dropped. **`findings: none` is a successful
+review** — never pad, never re-sweep at a lower bar; there is a defined clean-review exit
+(L5.0). True-but-tiny goes at `severity: Nit`, exempt from the ships-test, batched into
+ONE ask rather than looped per item. This is never a licence to stay quiet: everything
+that clears the bar is reported at its true severity.
+
 **Review the CHANGE, not the codebase.** A finding is in scope only if the diff
 **introduces** it, or **newly exposes/worsens** it (and then the finding must say how).
 Pre-existing defects, old design decisions, and untouched code in a file the diff happens

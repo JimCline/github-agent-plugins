@@ -60,7 +60,8 @@ picking Opus means all six subagents are Opus → and whether the reviewer(s) sh
 when an advisor is available; each consulted finding records the advisor's
 concurrence or dissent) → per-category adversarial review — subagent
 findings are cross-checked against the orchestrator's own diff, then merged and
-deduped across categories → severity-ranked findings, each with a succinct action, and
+deduped across categories → severity-ranked findings, each with an **impact line** and a
+succinct action (nits batched separately; a clean review ends here and says so), and
 (at 3+ findings) **turned into a tracked task list** → choose one-by-one / fix all / fix
 by severity → apply fixes, one task in progress at a time → one ask (commit and
 push / commit only / neither) → one worker dispatch commits (and pushes) → a closing
@@ -82,6 +83,32 @@ unfixed Critical/High individually). List ordering conveys severity only while t
 list is in front of you; once you're deciding on one issue at a time, or reading the task
 list on its own, that signal is gone. So it's carried on the finding itself rather than
 inferred from position.
+
+### Signal, not quota
+
+A finding has to matter. The bar is one question — **what goes wrong if this ships?** —
+and every finding answers it in an `impact:` field shaped `when <trigger>, <observable
+consequence>`, which must justify the severity it claims. The trigger is what makes the
+bar checkable: "when the list is empty, this throws" can be tested against the diff;
+"bad practice" can't. Findings whose impact names no trigger and no failure get demoted
+or dropped — but only after the orchestrator has tried to name the consequence itself, so
+a real defect with a lazily-written impact line gets its line fixed rather than binned.
+Drops are counted in the same one-line note as scope drops.
+
+**Finding nothing is a successful review.** A clean diff ends at a clean report — the
+categories that ran, the base spec, the file count, and any drop count — not at a
+manufactured list. That's a defined exit in the procedure, not an edge case, because the
+fan-out itself creates the pressure to pad: several reviewers, one small diff, each
+inclined to justify its own dispatch.
+
+Genuine small things live at `severity: Nit`, the one severity exempt from the ships-test.
+Nits are **batched** — one collapsed block, one collective ask (apply all / skip all /
+pick), counted separately from findings — instead of each costing a task, a prompt, and a
+drafted comment. Per-item cost is what made valid nits feel like noise.
+
+None of this is licence to stay quiet. The bar decides what counts as a finding; it never
+justifies withholding or softening one that clears it, and severity is never graded down
+to look less noisy.
 
 ### What gets reviewed
 
