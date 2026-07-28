@@ -395,9 +395,11 @@ assessment marker AND the session lock (Step 0), and close out — with no findi
 are no fixes, so L8 has nothing to commit. Do not go looking for something to report to
 fill the silence.
 
-In the **GitHub PR flow** the trigger is the same, with one difference: the worktree still
-exists. Report clean, then dispatch G7's CLEANUP (its zero-comments variant) to remove it.
-Closing out directly leaks the worktree.
+In the **GitHub PR flow** the trigger is the same, but two things still have to happen:
+the worktree exists and the review marker is set. Report clean, dispatch G7's CLEANUP
+(its zero-comments variant — reachable directly from here; G5.5 and G6 are skipped along
+with everything else), then remove the review marker per step 0.1. Closing out without
+that dispatch leaks the worktree.
 
 ### ALWAYS SHOW SEVERITY — every time a finding is displayed, anywhere
 
@@ -407,11 +409,16 @@ task subject, a final table, a summary line) the ranking is gone and the user is
 it blind. So **every rendering of a finding leads with its severity**, in this form:
 
 > **`[Critical]`** `parser.ts:88` — unchecked null deref on the new error path *(general)*
+> **Impact:** when the upstream call times out, the handler throws instead of returning
+> the 503 the caller expects.
 
 Concretely, that means severity appears in: the L5/G5 list, **every** per-issue prompt in
 L7/G6 (including the AskUserQuestion — put the severity in the question text, and use it
 as the option `header` chip where it fits), the task `subject` from L5.1, G7's final
 table, and the L8/G7 summaries. If a user can see a finding, they can see how bad it is.
+The **impact line rides along** everywhere the finding is presented for a decision (the
+list and the L7/G6 prompts); severity says how bad, impact says why. Nits carry `[Nit]`
+the same way inside their batched block — a severity label is not a per-item loop.
 
 Never quietly drop or soften a severity between the reviewer's return and what the user
 sees. If you disagree with a reviewer's rating, present the change explicitly —
@@ -464,6 +471,11 @@ review.
 Ask (AskUserQuestion):
 - **Review each issue one-by-one** (default), **Fix all**, **Fix all by severity**
   (choose a threshold), or **Something else** (follow their instruction).
+
+This ask covers the **non-Nit findings only** — the nit block already had its own single
+ask in L5, so a severity threshold never re-opens it. `Nit` sits below `Low`, so a
+threshold of "Low and above" means all findings and no nits; only an explicit "include
+the nits" pulls them back in.
 
 Once the user has chosen, the assessment phase is over — **remove the assessment marker**
 (`rm -f "$PWD/.git/code-critic-${CLAUDE_CODE_SESSION_ID:-}.assessing"`; bare variant under
@@ -678,7 +690,10 @@ Present a final table (**severity** → issue → action → comment URL / skipp
 **from the task list, by disposition** — *N posted, N skipped, N failed*, and break the
 counts down by severity so an unposted Critical can't hide inside "3 failed" — never a
 bare "N completed",
-which hides whether anything reached the PR. Offer to retry any failures (one batched
+which hides whether anything reached the PR. Nits approved in L5's batch ask are queued
+and posted like any other comment and appear in this table as `[Nit]` rows, but they are
+**counted on their own line** ("6 posted + 2 nits"), so a nit can never pad the finding
+count on the way out. Offer to retry any failures (one batched
 re-dispatch, then update those tasks), remove the review marker (step 0.1), and
 summarize.
 
