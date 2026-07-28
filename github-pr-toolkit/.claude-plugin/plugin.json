@@ -1,7 +1,7 @@
 {
   "name": "github-pr-toolkit",
-  "version": "0.20.0",
-  "description": "Pull-request toolkit: /resolve-pr-comments works through the review threads reviewers opened (present the found threads, ask how to research them — fan out one thread-assessor subagent per thread, one at a time, or inline — on a user-selected model, then reply, fix, resolve — tracked as a task list); /code-critic authors an adversarial review of a local diff or a GitHub PR across user-selected categories (general, security, design, rules-adherence, performance, tests, plus user-defined categories via the add-review-category wizard) via parallel per-category review subagents running on a user-selected model (session default, Opus, Sonnet, or Fable — one model across every category), with severity-triaged findings tracked as a task list, fix locally or post inline comments as one review. One architecture: a high-reasoning orchestrator delegates ALL GitHub and outbound-git work to Haiku workers over GitHub's hosted MCP server.",
+  "version": "0.21.0",
+  "description": "Pull-request toolkit: /resolve-pr-comments works through the review threads reviewers opened (present the found threads, ask how to research them — fan out one thread-assessor subagent per thread, one at a time, or inline — on a user-selected model, then reply, fix, resolve — tracked as a task list); /code-critic authors an adversarial review of a local diff or a GitHub PR across user-selected categories (general, security, design, rules-adherence, performance, tests, plus user-defined categories via the add-review-category wizard) via parallel per-category review subagents running on a user-selected model (session default, Opus, Sonnet, or Fable — one model across every category), with severity-triaged findings tracked as a task list, fix locally or post inline comments as one review, in a configurable feedback tone (terse / balanced / suggestion) that governs wording without touching severity or which findings are reported. One architecture: a high-reasoning orchestrator delegates ALL GitHub and outbound-git work to Haiku workers over GitHub's hosted MCP server.",
   "author": {
     "name": "Jim Cline"
   },
@@ -13,6 +13,13 @@
       "description": "One PAT shared by both workers (github-worker and critic-worker), sent as a Bearer header to GitHub's hosted MCP server. Fine-grained scopes: Metadata = Read, Pull requests = Read & write (read threads/diffs, reply, resolve, post review comments), Contents = Read (code-critic's PR worktree checkout). Stored in your OS keychain — never in settings.json or a shared env var. Re-enter after plugin upgrades if GitHub access fails.",
       "sensitive": true,
       "required": true
+    },
+    "review_tone": {
+      "type": "string",
+      "title": "Review feedback tone",
+      "description": "How /code-critic words its feedback — most visibly in the inline review comments it drafts onto a PR, which are read by someone who wasn't in the session. 'terse' = declarative and minimal, no hedging or preamble. 'balanced' = the default voice: states the problem, brief reasoning, recommended action. 'suggestion' = collaborative framing, proposals rather than verdicts. Affects WORDING ONLY: never which findings are reported, never their severity, never what the impact line says — a Critical stays Critical and still says what breaks in all three. Anything unset or unrecognized is treated as 'balanced'. Override per-run with --tone terse|balanced|suggestion, or just ask in the session.",
+      "default": "balanced",
+      "required": false
     }
   }
 }

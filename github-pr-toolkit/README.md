@@ -5,7 +5,7 @@
 | Command | What it does | Docs |
 |---|---|---|
 | **`/resolve-pr-comments`** | Work through the review threads reviewers *already opened*: assess each, reply, fix or reject, and resolve — tracked as a task list. Assessment runs on a model you pick (default / Opus / Sonnet / Fable). | this file |
-| **`/code-critic`** | *Author* an adversarial review of a local diff or a GitHub PR across user-selected categories (general, security, design, rules-adherence, performance, tests), via parallel per-category review subagents on a model you pick (session default / Opus / Sonnet / Fable, one across all categories — or the advisor / main agent). High-signal by construction — every finding names what breaks if it ships, and finding nothing is a successful review. Severity-triaged findings tracked as a task list, nits batched into one ask, fix locally or post inline comments as one review. | [docs/code-critic.md](docs/code-critic.md) |
+| **`/code-critic`** | *Author* an adversarial review of a local diff or a GitHub PR across user-selected categories (general, security, design, rules-adherence, performance, tests), via parallel per-category review subagents on a model you pick (session default / Opus / Sonnet / Fable, one across all categories — or the advisor / main agent). High-signal by construction — every finding names what breaks if it ships, and finding nothing is a successful review. Severity-triaged findings tracked as a task list, nits batched into one ask, fix locally or post inline comments as one review — in a configurable feedback tone (terse / balanced / suggestion). | [docs/code-critic.md](docs/code-critic.md) |
 | **`/github-pr-toolkit:doctor`** | Report and clear orphaned `/code-critic` review markers, then diagnose (and help fix) the GitHub MCP wiring — without running either flow. | below |
 | **`add-review-category`** (skill) | Wizard: add your own `/code-critic` review category — guided creation from the trusted template, or validated import from a local file / GitHub. Installs to `~/.claude/agents` or the project's `.claude/agents`. | [docs/code-critic.md](docs/code-critic.md) |
 
@@ -108,6 +108,15 @@ GitHub's hosted server as a Bearer header. **Known Claude Code issue
 ([#62442](https://github.com/anthropics/claude-code/issues/62442)):** sensitive config
 values can be lost on restart or upgrade — if GitHub access suddenly breaks, re-enter
 the PAT here first.
+
+The same dialog carries one non-sensitive preference, **`review_tone`** — how
+`/code-critic` words its feedback: `terse`, `balanced` (the default), or `suggestion`. It
+applies most visibly to the **inline review comments code-critic drafts onto a PR**, which
+are read by someone who wasn't in your session. Override for a single run with
+`--tone terse|balanced|suggestion`, or just say so in the session. It changes wording
+only — never which findings are reported, never a severity, never what the impact line
+says; a Critical stays Critical and still states what breaks in all three tones. Anything
+unset or unrecognized is treated as `balanced`, and you are never prompted for it.
 
 You don't have to get this perfect up front — running `/resolve-pr-comments` health-checks
 GitHub access first and, if it fails (the most common cause is a missing token), **walks

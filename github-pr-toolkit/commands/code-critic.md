@@ -401,6 +401,77 @@ the worktree exists and the review marker is set. Report clean, dispatch G7's CL
 with everything else), then remove the review marker per step 0.1. Closing out without
 that dispatch leaks the worktree.
 
+### FEEDBACK TONE — wording only, never substance
+
+Review prose is rendered in one of three tones. Resolve it in this order and **never ask**:
+1. An explicit instruction from the user this session ("be blunt", "go easy on this one").
+2. A `--tone terse|balanced|suggestion` argument on the invocation.
+3. The plugin's **`review_tone`** setting (`/plugin` → `github-pr-toolkit` → Configure).
+4. **Balanced** — the default, and the fallback for anything unset, unrecognized, or an
+   unresolved `${user_config.review_tone}` placeholder. Treat a missing tone as Balanced
+   silently: no error, no prompt. Tone is a setting precisely so it costs no interaction.
+
+**Where tone lands hardest: the drafted PR comment bodies in G6.** Everything else you
+render is you talking to the user, in a session they are sitting in. A review comment is
+outbound — it outlives the session and is read by someone who was not here, who cannot ask
+you what you meant, and who may be the author of the code you are criticizing. Draft those
+bodies in the resolved tone deliberately; that is the artifact this setting exists for.
+Tone also applies to the L5/G5 list, the L7/G6 per-issue prompts, the batched nit block,
+and the L8/G7 summaries — one voice per session, since a setting is known before the
+review starts.
+
+**Tone governs WORDING ONLY.** It never changes which findings are reported (the
+WORTH-REPORTING bar owns that), never a severity, never the substance of an `impact:`
+line or a recommended action, and never the structural furniture — the `[Severity]`
+label, the `file:line`, and the `Impact:` line appear in all three tones, in the presented
+list and in the posted comment alike. Task `subject`s and `metadata` stay **tone-neutral**
+in every tone: they are the record L8 reads back, and a tone-shifted subject makes the
+record drift from what was decided.
+
+Two failure modes to name outright:
+- **Suggestion tone is not a downgrade.** A Critical stays `[Critical]` and still states
+  plainly what breaks. The *framing* is a proposal; the *facts* are not negotiable. This
+  is the same prohibition as ALWAYS SHOW SEVERITY's no-silent-re-grading rule, arriving
+  from a different direction. Softening a Critical into "you might consider…" in a comment
+  a reviewer will act on is the worst version of this failure, because it ships.
+- **Terse is not omission.** Fewer words around the facts, never fewer facts. The impact
+  line keeps its `when <trigger>, <observable consequence>` shape; dropping it as "verbose"
+  defeats the field.
+
+**Reviewers are never told the tone.** Subagents return factual findings in the fixed
+shape; YOU render. That keeps the return shape stable, keeps dedup matching on the defect
+rather than the wording, and means the tone can change mid-review without re-reviewing
+anything.
+
+**The same drafted PR comment body in all three tones.** Severity, `file:line`, and the
+impact are identical in each — only the framing moves:
+
+> *Terse* —
+> **[Critical]** Unchecked null deref on the new error path.
+> **Impact:** when the upstream call times out, `resolve()` returns `null` and this throws
+> instead of returning the 503 the caller expects.
+> Guard the return before `.parse()`.
+
+> *Balanced (default)* —
+> **[Critical]** Unchecked null deref on the new error path.
+> **Impact:** when the upstream call times out, `resolve()` returns `null` and this throws
+> instead of returning the 503 the caller expects.
+> The new error path assumes `resolve()` always returns a value. Guarding the return before
+> `.parse()` fixes it; alternatively, having `resolve()` throw a typed error the handler
+> already catches keeps `null` out of the signature.
+
+> *Suggestion* —
+> **[Critical]** Unchecked null deref on the new error path.
+> **Impact:** when the upstream call times out, `resolve()` returns `null` and this throws
+> instead of returning the 503 the caller expects.
+> It looks like the timeout case was meant to fall through to the 503 here — a guard on the
+> return before `.parse()` would get it there. If you'd rather keep `null` out of the
+> signature, `resolve()` could throw a typed error the handler already catches.
+
+The in-session rendering follows the same rule; the L5 list entry for that finding is
+`**[Critical]** parser.ts:88 — …` plus its impact in every tone, with only the
+surrounding explanation tightening or softening.
+
 ### ALWAYS SHOW SEVERITY — every time a finding is displayed, anywhere
 
 **Severity is never implied by position alone.** Ordering communicates it in the full
@@ -636,7 +707,11 @@ too, not just the prose) plus **its `impact:` line**, including any *already fla
 annotation with the existing comment quoted briefly, then ask (AskUserQuestion). Severity
 and impact both belong in the drafted comment `body` you propose: a reviewer reading it
 on GitHub has none of this context either, and "here's what breaks" is what makes a
-review comment actionable rather than an opinion. Tell the user they can press **Tab on an option to amend it** — e.g.
+review comment actionable rather than an opinion. **Draft the body in the resolved
+feedback tone** (see FEEDBACK TONE in L5) — these comments are the surface that tone
+exists for, since they are read by someone who wasn't in this session. The severity
+label, the `file:line`, and the impact line are identical in all three tones; only the
+framing around them changes. Tell the user they can press **Tab on an option to amend it** — e.g.
 tweak the proposed comment wording before it's posted. Options, ordered so the
 recommended one is first:
 - **If the issue is NOT already flagged** → recommend **queueing the comment**: show the

@@ -43,6 +43,15 @@ the closing summary. Ordering conveys severity in the full list and nowhere else
 moment a finding is shown alone the ranking is gone. Never silently re-grade a reviewer's
 severity — if you disagree, say so explicitly.
 
+**Feedback tone is a SETTING, never an ask:** `${user_config.review_tone}`. Resolve per the
+command file's FEEDBACK TONE section — explicit session instruction > `--tone` argument >
+this setting > **Balanced**. If that placeholder arrives unresolved, or holds anything but
+`terse` / `balanced` / `suggestion`, use Balanced and say nothing. Tone lands hardest on the
+**drafted PR comment bodies in G6** — those are read by someone who wasn't in the session.
+It changes wording ONLY: never a finding, never a severity, never an impact line. A
+Critical stays `[Critical]` and still says what breaks in all three tones, and terse never
+means dropping the impact line.
+
 **Signal, not quota — a quality review, not a count.** A finding earns its place by
 mattering: **what goes wrong if this ships?** Every finding carries an `impact:` line as
 `when <trigger>, <observable consequence>` that justifies its severity; "bad practice" /

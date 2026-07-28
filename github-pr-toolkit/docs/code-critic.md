@@ -84,6 +84,37 @@ list is in front of you; once you're deciding on one issue at a time, or reading
 list on its own, that signal is gone. So it's carried on the finding itself rather than
 inferred from position.
 
+### Feedback tone
+
+A setting, not a wizard step — **`/plugin` → `github-pr-toolkit` → Configure →
+`review_tone`**, defaulting to **balanced**:
+
+| Tone | Voice |
+|---|---|
+| `terse` | Declarative and minimal. No hedging, no preamble. |
+| `balanced` *(default)* | States the problem, brief reasoning, recommended action. |
+| `suggestion` | Collaborative framing — proposals rather than verdicts. |
+
+Override for one run with `--tone terse\|balanced\|suggestion`, or just say so in the
+session ("be blunt about this one"); a spoken instruction wins over the setting. Anything
+unset or unrecognized falls back to balanced silently — you are never prompted for it.
+
+**It lands hardest on the inline PR comments.** Everything else code-critic renders is it
+talking to you, in a session you're sitting in. A review comment is outbound: it outlives
+the session and is read by someone who wasn't here, can't ask what you meant, and may have
+written the code being criticized. That's the artifact the setting exists for.
+
+**Wording only.** Tone never changes which findings are reported, never a severity, and
+never what an impact line says. The `[Severity]` label, the `file:line`, and the impact
+line are identical in all three tones — in the presented list and in the posted comment.
+Suggestion tone is not a downgrade (a Critical stays Critical and still says what breaks);
+terse is not omission (fewer words around the facts, never fewer facts). Task subjects and
+metadata stay tone-neutral in every tone, since they're the record the closing summary
+reads back.
+
+Reviewers are never told the tone — subagents return factual findings and the orchestrator
+renders. So the tone can change mid-review without re-running anything.
+
 ### Signal, not quota
 
 A finding has to matter. The bar is one question — **what goes wrong if this ships?** —
