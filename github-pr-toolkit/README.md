@@ -314,6 +314,31 @@ delegation gate is enforced by the plugin's `PreToolUse` guard hook
 
 - **Main agent (no `agent_id` in the hook input) → denied** with a message telling it
   to delegate to a worker.
+- **The `gh` CLI is denied to the main agent on the same always-on basis** — not just
+  during a review. `gh` is GitHub I/O by another transport, so gating MCP while leaving
+  `gh` open would leave the invariant advisory: an orchestrator without
+  `create_pull_request` simply reaches for `gh pr create`. Exactly two carve-outs, both
+  local credential checks returning no repository data: **`gh auth status`** and
+  **`gh --version`** (`/github-pr-toolkit:doctor` needs them when MCP is what's broken).
+  Detection is at command position only, so `grep 'gh api' file` and `echo "run gh auth"`
+  are not false-blocked — but wrapper heads (`bash -c "gh …"`, `xargs`, `env`, `eval`)
+  and the context-mode `ctx_execute` channel (which carries its command in `code`, not
+  `command`) are covered, since both are ways to reach a shell without `gh` at the head
+  of a Bash string. Inside the workers `gh` remains available as its gated fallback.
+
+**Testing the guard:** `bash github-pr-toolkit/hooks/guard.test.sh` — 59 cases over
+every rule, both directions (blocked *and* allowed), including that the armed-window
+`ctx_*` closure does **not** reach the workers (`critic-worker` runs `git commit` in that
+exact window, and stranding it would present as a worktree bug nowhere near the hook).
+Worth running after any edit to `guard.mjs`, because this hook fails **silently**: an
+accidental exit 0, or a crash exiting 1, is indistinguishable from correct enforcement
+until something that should have been blocked succeeds.
+
+One documented limitation, asserted in the suite so it can't drift: the **assessing gate
+and the reviewer Bash grant are head-only** — unlike the `gh` scan they don't look inside
+a wrapper payload, so `bash -c "git diff"` is refused during assessment even though a
+bare `git diff` is fine. That's the safe direction (a wrapper is exactly where a test run
+would hide during a static review); re-issue without the wrapper.
 - **This plugin's workers (`agent_type` is `github-worker`/`critic-worker`) →
   actively granted** (`permissionDecision: "allow"`), so the non-interactive Haiku
   workers run without prompts.
@@ -362,12 +387,21 @@ review markers in `.git` (offering to clear them), then probes the plugin's GitH
 server through both workers and reports connect/auth status without running either flow,
 then walks you through the fix and re-probes.
 
-- **`/code-critic` refuses to run `gh`/git, or blocks Bash, when no review is active.**
-  A crashed run left a marker in `.git`. The guard ignores markers older than 8h, so
-  this self-heals — but a bare `.git/code-critic.lock` (armed when the session id was
-  unavailable) blocks **every** session in the repo until then. `/github-pr-toolkit:doctor`
-  step 0 lists them and offers to clear them; `/code-critic`'s own sweep only fires when
-  you next arm a review *in that repo*. Manual escape hatch:
+- **Claude refuses to run `gh`, and no review is active.** That one is **by design, not a
+  stuck lock.** The `gh` denial is always on — see the guard-hook section above — so the
+  main agent never reaches GitHub by either transport. Ask it to delegate to
+  `github-worker` instead, or run the command yourself. `gh auth status` and
+  `gh --version` are the two exceptions. If you want `gh` back for the main agent, the
+  gate is the `isGhBlocked` call in `hooks/guard.mjs`; removing it re-opens the bypass
+  the always-on tier exists to close.
+
+- **`/code-critic` blocks `git commit`/`push`, or blocks Bash generally, when no review is
+  active.** *This* is the stuck-marker symptom: a crashed run left a marker in `.git`. The
+  guard ignores markers older than 8h, so it self-heals — but a bare
+  `.git/code-critic.lock` (armed when the session id was unavailable) blocks **every**
+  session in the repo until then. `/github-pr-toolkit:doctor` step 0 lists them and offers
+  to clear them; `/code-critic`'s own sweep only fires when you next arm a review *in that
+  repo*. Manual escape hatch:
   `rm -f .git/code-critic*.lock .git/code-critic*.assessing`.
 
 - **`No such tool available: mcp__plugin_github-pr-toolkit_github__*`.** The plugin's

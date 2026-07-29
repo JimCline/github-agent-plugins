@@ -85,7 +85,8 @@ Optional argument (a PR number or URL): `$ARGUMENTS`
 **0.1 Pick the PR source.** If `$ARGUMENTS` already names a specific PR, use it.
 Otherwise ask the user (AskUserQuestion):
 - *Default:* "This repo's GitHub remote" — derive `owner/repo` from
-  `git remote get-url origin` (or `gh repo view --json nameWithOwner`).
+  `git remote get-url origin`. (Not `gh repo view` — the guard denies you `gh` at all
+  times, review or no review. The git remote already answers this question locally.)
 - "A different repo or PR URL" — let them paste `owner/repo` or a full PR URL.
 
 If the PR number still isn't known, delegate to `github-worker`: *"List open PRs for
@@ -141,7 +142,11 @@ natively covers everything this flow needs (unresolved-thread listing, in-thread
 replies, thread resolution), so `gh` adds nothing and checking it is wasted time.
 Run `gh auth status` only when 0.2 FAILED (it tells the user whether the CLI fallback
 could unblock them while the MCP setup gets fixed), or later if a worker return carries
-a `via: gh (mcp error: …)` line.
+a `via: gh (mcp error: …)` line. `gh auth status` is one of the two commands the guard
+carves out of its always-on `gh` denial (the other is `gh --version`) — it reads local
+credentials and returns no repository data, which is why a broken-MCP diagnostic is
+still allowed to run it. That carve-out does not extend an inch further: any other `gh`
+invocation is denied to you whether or not a review is active.
 
 ---
 

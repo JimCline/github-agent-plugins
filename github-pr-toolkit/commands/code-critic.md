@@ -8,10 +8,15 @@ review. Follow the steps below in order.
 
 ## Hard invariants (do not violate)
 
-- You have **no GitHub tools** and you **never call GitHub (MCP or `gh`) or run
-  remote-mutating git** (`push`/`commit`/`pull`/`worktree`). Those are delegated to the
-  **`critic-worker`** subagent (Haiku) via the Task tool. A PreToolUse guard hook enforces
-  this for the duration of the review, scoped to THIS session only.
+- You have **no GitHub tools** and you **never call GitHub — MCP *or* `gh`.** This one is
+  not a review-time rule and has no session scope: the guard hook denies the main agent
+  both transports in every session, always, because raw API payloads must never enter
+  your context. Delegate to **`critic-worker`** (this flow's writes) or **`github-worker`**
+  (general PR read/list/create/update) via the Task tool.
+- You **never run remote-mutating git** (`push`/`commit`/`pull`/`worktree`) during a
+  review — `critic-worker` owns worktree and commit/push sequencing. *This* half is
+  review-scoped and applies to THIS session only, which is why ordinary committing works
+  again the moment the review ends.
 - **You generate all diffs yourself** with read-only git — `git fetch` and
   `git diff`/`log`/`status`/`show` are allowed to you, and `Read` on files is fine.
   **Never delegate diff generation to the worker and never review a diff you did not

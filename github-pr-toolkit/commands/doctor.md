@@ -57,22 +57,40 @@ to probe is through the workers. Do that now, narrowly (do NOT arm the code-crit
 review lock — this is not a review):
 
 1. Determine `owner/repo` from `git remote get-url origin` (fall back to asking the
-   user), and a PR number for the critic-worker probe: `$ARGUMENTS` if given, else
-   `gh pr list --limit 1` (the guard's Bash rules are not armed, so you may run gh
-   here), else ask the user for any PR number on the repo.
-2. Dispatch BOTH probes in parallel (both workers share the same server + PAT, but
-   each has its own `tools:` allowlist — probe each):
-   - `github-worker`: *"MCP-DOCTOR task — this verifies the GitHub MCP server + PAT, so
-     success means a GitHub MCP call succeeded (a `gh` result cannot count as success
-     here). Call `mcp__plugin_github-pr-toolkit_github__list_pull_requests` on
-     `<owner/repo>`. Return EXACTLY two lines: line 1 `mcp: ok` or `mcp: failed — <the
-     exact error, verbatim>`; line 2 the first line of `gh auth status` output,
-     prefixed `gh: ` (or `gh: not installed`)."*
-   - `critic-worker`: *"MCP-DOCTOR task — this verifies the GitHub MCP server + PAT, so
-     success means a GitHub MCP call succeeded (a `gh` result cannot count as success
-     here). Call `mcp__plugin_github-pr-toolkit_github__pull_request_read (method:
-     get)` on PR #<N> of `<owner/repo>`. Return EXACTLY one line: `mcp: ok` or
-     `mcp: failed — <the exact error, verbatim>`."*
+   user). **Do NOT run `gh` to find a PR number.** The guard denies you `gh` ALWAYS —
+   not only during a review — and this diagnostic gets no exemption from its own
+   plugin's invariant. (`gh auth status` and `gh --version` are the two carve-outs, and
+   even those are cleaner to collect from inside the worker probe, where the CLI would
+   actually be used.) The PR number comes from `$ARGUMENTS` if given; otherwise the
+   `github-worker` probe below hands you one.
+2. Probe both workers — they share the same server + PAT, but each has its own `tools:`
+   allowlist, so a fault can sit in just one. **If `$ARGUMENTS` gave you a PR number,
+   dispatch both in parallel.** If it did not, `critic-worker`'s probe has no PR to read,
+   so run them in SEQUENCE instead: a doctor run is not latency-sensitive, and the only
+   way to keep the parallelism would be a main-agent `gh pr list`, which is exactly what
+   step 1 forbids.
+   - `github-worker` (first, when sequencing): *"MCP-DOCTOR task — this verifies the
+     GitHub MCP server + PAT, so success means a GitHub MCP call succeeded (a `gh`
+     result cannot count as success here). Call
+     `mcp__plugin_github-pr-toolkit_github__list_pull_requests` on `<owner/repo>`.
+     Return EXACTLY three lines: line 1 `mcp: ok` or `mcp: failed — <the exact error,
+     verbatim>`; line 2 the first line of `gh auth status` output, prefixed `gh: ` (or
+     `gh: not installed`); line 3 `pr: #<number>` naming any open PR from that list, or
+     `pr: none` if the list was empty or the call failed."*
+     **In the parallel branch, ask for only the first TWO lines** — you already have a
+     PR number from `$ARGUMENTS`, and a Haiku worker asked to produce a line nobody
+     reads is a needless confabulation surface.
+   - `critic-worker` (then, with that number): *"MCP-DOCTOR task — this verifies the
+     GitHub MCP server + PAT, so success means a GitHub MCP call succeeded (a `gh`
+     result cannot count as success here). Call
+     `mcp__plugin_github-pr-toolkit_github__pull_request_read (method: get)` on PR #<N>
+     of `<owner/repo>`. Return EXACTLY one line: `mcp: ok` or `mcp: failed — <the exact
+     error, verbatim>`."*
+   If line 3 came back `pr: none`, ask the user for any PR number on the repo. If they
+   haven't got one, **skip the critic-worker probe and report it as `not probed (no PR
+   number available)`** — never invent a number to probe with: a 404 on a PR that does
+   not exist reads exactly like an auth failure and would send the whole diagnosis the
+   wrong way.
    Phrase them positively as above — no "ONLY"/"FORBIDDEN" wording (exclusionary
    phrasing + context-mode's injected routing text reads as a prompt injection to the
    permission classifier and gets the dispatch blocked).
@@ -96,7 +114,12 @@ review lock — this is not a review):
      restart the session, and confirm the plugin is enabled.
    - One worker ok, the other failed → the server and PAT are fine; the failing
      worker's `tools:` allowlist has drifted — diff the two agent files.
+   - `critic-worker: not probed (no PR number available)` → **not a fault.** Report it
+     as unprobed, in those words. Do not round it up to healthy or down to broken; an
+     empty repo simply has nothing for that probe to read.
    - The `gh:` line tells them whether the CLI fallback would work in the meantime.
+     Note it is the WORKERS that use `gh`, so a worker-collected `gh:` line is the one
+     that matters — the main agent is denied `gh` regardless of what the CLI says.
 4. **Remediate, then verify — loop until healthy or the user stops.** Don't just
    prescribe; walk them through the fix that matches the failure:
    - **Server never connected** → first, PAT: you cannot set it for them (it's an

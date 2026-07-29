@@ -22,14 +22,27 @@ Same clean split of labor as /resolve-pr-comments:
   `git commit`/`push`. It hands back short, verifiable results that the orchestrator
   cross-checks against local git.
 
-A **PreToolUse guard hook** enforces the split. The plugin's GitHub MCP tools
-(`mcp__plugin_github-pr-toolkit_github__*`) are **always** denied to the main agent and
-granted to the workers. The Bash rules — `gh` and remote-mutating git
-(`push`/`commit`/`pull`/`worktree`) blocked, `git fetch` and read-only git allowed —
-apply only for the duration of a review and are **scoped to the initiating session**:
-the self-healing lock file is *named* after that session
-(`.git/code-critic-<session_id>.lock`), so other Claude Code sessions in the same repo
-are never blocked — and two concurrent reviews each hold their own lock.
+A **PreToolUse guard hook** enforces the split, in two tiers.
+
+**Always on** — no lock, no review, no session scope. Both routes to GitHub are denied
+to the main agent and granted to the workers: the plugin's GitHub MCP tools
+(`mcp__plugin_github-pr-toolkit_github__*`) and the **`gh` CLI**. These are deliberately
+symmetric, because gating one transport while leaving the other open just relocates the
+mistake — with no review armed, an orchestrator that can't call `create_pull_request`
+will reach for `gh pr create` instead. The reason for delegating doesn't depend on a
+review being in progress, so neither does the rule. Two carve-outs, both local
+credential checks that return no repository data: `gh auth status` and `gh --version` —
+`/github-pr-toolkit:doctor` and resolve-pr-comments' step 0.3 need them precisely when
+the MCP path is broken.
+
+**Armed only** — remote-mutating git (`push`/`commit`/`pull`/`worktree`) is blocked for
+the duration of a review and **scoped to the initiating session**: the self-healing lock
+file is *named* after that session (`.git/code-critic-<session_id>.lock`), so other
+Claude Code sessions in the same repo are never blocked, and two concurrent reviews each
+hold their own lock. This tier stays lock-scoped on purpose — it's plain git against
+whatever remote the repo has, not GitHub API access, and blocking it always would stop
+ordinary committing in every session the plugin is installed in. `git fetch` and
+read-only git stay allowed throughout.
 
 ---
 

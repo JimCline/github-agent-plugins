@@ -46,8 +46,15 @@ write, Contents: Read** — see the [plugin README](github-pr-toolkit/README.md#
 - The GitHub MCP server is defined in the plugin's `.mcp.json` (Claude Code drops
   `mcpServers` declared in plugin agent frontmatter), and a **PreToolUse guard hook**
   enforces the gate: the main agent is always denied the
-  `mcp__plugin_github-pr-toolkit_github__*` tools, while the two worker subagents are
-  actively granted them — delegation is mandatory, not advisory.
+  `mcp__plugin_github-pr-toolkit_github__*` tools **and the `gh` CLI**, while the two
+  worker subagents are actively granted them — delegation is mandatory, not advisory.
+  Both transports are gated on the same always-on basis, with no review or lock
+  required, because closing one door and leaving the other open only moves the mistake;
+  the sole carve-outs are `gh auth status` / `gh --version`, local credential checks the
+  doctor needs when MCP itself is what's broken. `github-worker` can open and update PRs
+  (`create_pull_request`, `update_pull_request`, `update_pull_request_branch`) so the
+  delegated path is a real alternative rather than a dead end — but **not merge one**:
+  merging is irreversible and stays the user's call.
 - Workers run on **Haiku** with a locked tool allowlist, the server narrowed to the
   pull-request toolset, and explicit never-fabricate rules; the orchestrator
   cross-checks worker returns. Haiku executes, it never judges: trimming is verbatim
@@ -59,8 +66,10 @@ write, Contents: Read** — see the [plugin README](github-pr-toolkit/README.md#
   exact-string returns (`ok: <N> …`, verified against the count sent), so a full flow
   costs ~3 worker dispatches instead of one per thread/finding — each avoided dispatch
   saves fixed harness overhead plus anything ambient hooks inject into subagent prompts.
-- code-critic adds a session-scoped **PreToolUse guard** for the `gh`/git surface during
-  an active review.
+- code-critic adds a session-scoped **PreToolUse guard** for remote-mutating git
+  (`push`/`commit`/`pull`/`worktree`) during an active review — that tier stays
+  lock-scoped, since it is plain git rather than GitHub access and blocking it always
+  would stop ordinary committing everywhere the plugin is installed.
 - code-critic's adversarial pass can fan out to **six per-category review subagents**
   (`code-reviewer-*`, on a model you pick — session default, Opus, Sonnet, or Fable,
   applied uniformly so every category reviews on the same one; the picker never offers
