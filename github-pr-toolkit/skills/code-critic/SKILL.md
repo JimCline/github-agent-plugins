@@ -41,6 +41,17 @@ whose read of one lens colours the next, so it's cheaper and weaker), the adviso
 inline. Four is the `AskUserQuestion` cap — never add a fifth. "Work independently" is a
 first-class **Other** answer that sets `advisor: none`; mention it exists.
 
+**Fan-out width is the user's call, not a default (L3.0).** When the per-category fan-out
+is chosen and 2+ categories are selected, ask — as a SEPARATE question after the four
+tabs, naming the actual count — how many reviewers run at once: **6 at a time rolling**
+(default; identical to "all" for the standard six, so the common path costs nothing),
+**all N at once**, **one at a time**, or a number they name. Above the cap use a ROLLING
+queue — refill each freed slot as a reviewer returns, never wait for a whole batch. A cap
+of 1 IS the no-fan-out answer, so there is no separate boolean; a cap of 0 is not "the
+main agent reviews" (zero subagents is equally true of the advisor path — reviewer
+identity belongs to the Reviewer tab, and a number that also picked the reviewer would
+fight it). Never silently exceed a cap the user set.
+
 **A code review must not alter code**, and the reviewer agents enforce that structurally:
 no `tools:` allowlist (they inherit the session's tools, so any memory MCP server comes
 along) plus a `disallowedTools` list removing `Write`/`Edit`/`MultiEdit`/`NotebookEdit`

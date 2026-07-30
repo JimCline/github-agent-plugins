@@ -76,7 +76,11 @@ write, Contents: Read** — see the [plugin README](github-pr-toolkit/README.md#
   Haiku, which stays reserved for the I/O workers), or run **all categories in one
   `code-reviewer-all` subagent** when you want one dispatch instead of six — cheaper, and
   able to see cross-lens interactions, but one reasoner rather than six independent ones.
-  Their findings are cross-checked against the orchestrator's own diff.
+  **The fan-out width is asked, never assumed:** choosing the per-category path with 2+
+  categories prompts for how many run at once (6 at a time rolling by default, all N, one
+  at a time, or your own number), with a rolling queue above the cap so a freed slot
+  refills immediately instead of idling on a straggler. A cap of 1 *is* the no-fan-out
+  answer. Their findings are cross-checked against the orchestrator's own diff.
 - **A code review cannot alter code**, structurally: the reviewer agents ship no `tools:`
   allowlist (so they inherit any memory MCP server the session has, with nothing to
   enumerate) and a `disallowedTools` list that removes `Write`/`Edit`/`MultiEdit`/

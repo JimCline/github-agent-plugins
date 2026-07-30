@@ -266,6 +266,40 @@ of this flow. If the user picks a model below the session's, tell them once that
 trades review depth for speed/cost — then honor the choice without re-litigating it.
 Never pin reviewers to Haiku; it is not offered here for that reason.
 
+### L3.0 — Parallelism (only when Tab 3 chose **Category subagents**)
+
+**Ask this as its own AskUserQuestion, AFTER the four-tab ask, and only on the fan-out
+path.** It cannot be a fifth tab — four is the hard cap — and it cannot ride inside the
+four, because the number of categories is not known until Tab 1/2 are answered. Skip it
+entirely for the advisor, the main agent, and the single `code-reviewer-all` agent: none
+of them runs concurrent subagents, so there is nothing to cap.
+
+**Skip it too when only ONE category was selected** — announce the single dispatch and
+move on. A cap question with nothing to cap is noise.
+
+Otherwise ask: *"You selected **N** categories. How many reviewers should run at once?"*
+**Name the actual N in the question** — the whole point is that the user sees the width
+before it happens, not after.
+
+- **6 at a time, rolling (default)** — at most 6 reviewers in flight; as each returns,
+  the next queued category is dispatched into the freed slot. For the default selection
+  (all six) this IS "all at once", so the common path costs nothing; it only bites when
+  customs push the count higher.
+- **All N at once** — the full fan-out. Honor it without re-litigating; they have now
+  been told the number.
+- **One at a time** — strictly sequential, one category per dispatch. **This is not the
+  same as Tab 3's "one subagent, all categories"**, and say so if they seem to be
+  reaching for that: this still runs N separate reviewers with N independent verdicts,
+  it just never runs two at once. Same review, same cost, spread over time.
+- **Other** — any number they name becomes the cap and everything below works the same.
+
+**The cap subsumes "fan out or not" — there is no separate boolean.** A cap of 1 is the
+no-fan-out answer. Do NOT extend the number downward to mean anything else: a cap of 0
+is not "the main agent reviews", because zero subagents is equally true of the advisor
+path, and a number that silently picks a *reviewer* would fight Tab 3 for the same
+decision. If a user asks for 0, treat it as a request to change reviewer and confirm
+which one they mean.
+
 ### L3.1 — Adherence prerequisite (only if that category is selected)
 
 Check for project directives — `CLAUDE.md` (root and relevant subdirs),
@@ -352,12 +386,20 @@ but that would be serious if true stays in the list, marked uncertain (L4's open
 rule) — state its impact conditionally: what goes wrong *if it is real*. A finding you
 are certain about that breaks nothing is the one to drop.
 
-**STOP — checkpoint before ANY subagent dispatch.** If a subagent path was chosen —
-**either the per-category fan-out or the single `code-reviewer-all` agent** — and you
-have **no answer from L3's Tab 4 (Reviewer model)**, you sent that ask without its fourth
-tab. Do not guess a model and do not dispatch: ask for the model now, then continue.
-Dispatching reviewers on a model the user was never offered is a violation of L3, not a
-shortcut. One subagent is still a subagent dispatch; a single agent does not exempt this.
+**STOP — checkpoint before ANY subagent dispatch.** Two answers must be in hand, and a
+missing one means an ask went out incomplete — not that you may fill the gap yourself:
+
+1. **Tab 4 (Reviewer model)** — required for *either* subagent path, the per-category
+   fan-out or the single `code-reviewer-all` agent. Missing it means you sent the ask
+   without its fourth tab. Dispatching reviewers on a model the user was never offered
+   is a violation of L3, not a shortcut. One subagent is still a subagent dispatch; a
+   single agent does not exempt this.
+2. **L3.0 (Parallelism cap)** — required for the per-category fan-out with **2+
+   categories**. Missing it means you skipped that ask. Do not default to "all at once"
+   and do not pick a cap yourself: unbounded fan-out is the exact thing L3.0 exists to
+   put in the user's hands, and quietly choosing for them reproduces the bug.
+
+Ask for whichever is missing now, then continue.
 
 **If ONE subagent for all categories was chosen:** dispatch a single
 `code-reviewer-all` agent. Everything about the dispatch matches the fan-out below —
@@ -385,7 +427,21 @@ the thing they picked to make cheaper.
 **If category subagents were chosen:** dispatch ONE `code-reviewer-<category>` agent per
 selected category (the built-ins — general / security / design / adherence /
 performance / tests — use the plugin-prefixed type; customs use their bare type from
-the agents list) — all in a SINGLE message so they run in parallel. **Set the Agent
+the agents list), **respecting L3.0's cap**:
+
+- **N ≤ cap** — all of them in a SINGLE message, so they run in parallel. This is the
+  common case (six selected, cap 6) and behaves exactly as it always has.
+- **N > cap** — a **rolling queue**, not batches. Dispatch `cap` reviewers, then send the
+  next queued category the moment ANY one returns, keeping `cap` in flight until the
+  queue drains. Do not wait for the whole batch to finish before starting the next —
+  batching idles every finished slot on the slowest straggler, and with reviewers on a
+  big model that straggler can be minutes.
+- **cap = 1** — one dispatch, wait, next. Still N separate reviewers with N independent
+  verdicts; only the concurrency changed.
+
+Say the plan in one line before you start (`"6 of 9 reviewers in flight, 3 queued"`), and
+never silently exceed the cap — a cap the user set and the flow ignores is worse than no
+cap, because they think the question was answered. **Set the Agent
 tool's `model` parameter on EVERY one of these dispatches to the Tab 4 alias** (`opus` /
 `sonnet` / `fable`) so all categories review on the one model the user picked — customs
 included, since the override applies to any agent type and takes precedence over

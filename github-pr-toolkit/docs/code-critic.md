@@ -19,10 +19,21 @@ answer, just not a tab slot, since `AskUserQuestion` caps at four options):
 
 | Reviewer | Dispatches | Tradeoff |
 |---|---|---|
-| **Category subagents** *(default)* | one `code-reviewer-<category>` per selected category, in parallel | strongest — each lens reaches its verdict independently and can't be coloured by the others |
+| **Category subagents** *(default)* | one `code-reviewer-<category>` per selected category, up to a cap you set | strongest — each lens reaches its verdict independently and can't be coloured by the others |
 | **One subagent, all categories** | a single `code-reviewer-all` | one dispatch instead of six, and it can see cross-lens interactions — but it's one reasoner, so `security` is coloured by what it just decided about `design`. Cheaper and quieter; a weaker review. Returns a **roll-call** so a skipped lens is visible rather than inferable |
 | **The advisor** | one `advisor` pass | no subagent return to cross-check, so scope discipline has to hold inline |
 | **The main agent** | none — reviews inline | spends orchestrator context on reviewing |
+
+**You set the fan-out width.** Picking the per-category path with 2+ categories triggers
+one more question, naming the actual count: how many reviewers run at once — **6 at a
+time, rolling** (the default; for the standard six that's the same as "all", so the usual
+path is unchanged), **all N at once**, **one at a time**, or a number you name. Past the
+cap it's a rolling queue — each freed slot refills the moment a reviewer returns, rather
+than waiting on the slowest of a batch. A cap of **1** is the no-fan-out answer, which is
+why there's no separate on/off toggle; it still runs N independent reviewers, just never
+two at once (different from "one subagent, all categories", which is one reasoner holding
+every lens). **0** isn't a valid cap — zero subagents describes the advisor path as much
+as the main-agent path, so which reviewer runs stays the Reviewer tab's decision.
 
 **A code review must not alter code**, and that's structural rather than requested. The
 reviewer agents ship **no `tools:` allowlist** — they inherit the session's tools, so any
