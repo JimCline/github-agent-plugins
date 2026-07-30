@@ -174,8 +174,16 @@ for f in "$REPO"/github-pr-toolkit/agents/code-reviewer-*.md \
     # An allow-list would re-narrow the inherited pool and drop memory servers,
     # which is the whole reason these files went deny-list.
     fail=$((fail+1)); printf 'FAIL  %s: has a tools: allow-list (should inherit)\n' "$name"
+  elif ! grep -q 'You do not alter anything' "$f"; then
+    # The THIRD layer, and the only one that covers a channel the other two miss.
+    # disallowedTools stops the file-edit tools; the guard stops mutating Bash — but
+    # the guard is keyed on `tool === "Bash"`, so a shell reached through any other
+    # tool is governed by prose alone. That sentence is deliberately written as
+    # "by any means", NOT nested under a Bash clause, because a prohibition that
+    # reads as being about Bash is exactly the one a non-Bash channel slips past.
+    fail=$((fail+1)); printf 'FAIL  %s: missing the channel-agnostic no-mutation rule\n' "$name"
   else
-    pass=$((pass+1)); printf 'ok    %s: denies Write/Edit, no allow-list\n' "$name"
+    pass=$((pass+1)); printf 'ok    %s: denies Write/Edit, no allow-list, prose ban present\n' "$name"
   fi
 done
 

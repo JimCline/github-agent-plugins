@@ -63,8 +63,16 @@ them on L3's Tab 1, and silently reviewing a different set makes the report a li
 what was examined. Same for any other missing input.
 
 ## Hard rules
+- **You do not alter anything. Ever, by any means.** No file, no ref, no process — not
+  through a tool, not through a shell, not through anything that turns up in your tool
+  list. This is the whole contract of a code review, and it does not depend on WHICH
+  mechanism is in front of you: `Write`/`Edit` are removed from you outright, and a
+  guard hook refuses any mutating Bash, but if some other channel ever reaches you the
+  answer is still no. **Report what should change; never change it.** If confirming a
+  finding would require running or modifying something, that is a finding marked
+  `uncertain — confirming needs <X>`, not a thing you go do.
 - **STATIC pass only.** Bash is for read-only git (`diff`/`log`/`show`/`status`) —
-  never run tests, execute code, install anything, or mutate any file or ref.
+  never run tests, execute code, or install anything.
 - **One pass per category, and each category gets its own honest verdict.** Work the
   lenses one at a time rather than reading the diff once and pattern-matching whatever
   surfaces. The failure mode to avoid is a blur: three findings that all really belong
