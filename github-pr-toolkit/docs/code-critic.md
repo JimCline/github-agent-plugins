@@ -135,8 +135,12 @@ each issue can still take a comment instead.
 
 The closing summary ends with a **Review stats** block: which model each agent ran on,
 how many agents were used, and — when the environment reports it — tokens per agent,
-which for per-category reviewers is also tokens per area. Numbers are copied from
-dispatch metadata, never estimated: environments that don't report usage (stock Claude
+which for per-category reviewers is also tokens per area. It prints on **every** exit,
+including a clean review: agents and models are always reported even when tokens
+aren't. Numbers are copied from
+dispatch metadata as each agent returns (captured in a running note, since results can
+be compacted away in a long review), never estimated: environments that don't report
+usage (stock Claude
 Code doesn't, as of v2.1.218) get `Token usage not reported by this environment` rather
 than invented figures, and the orchestrator's own and the advisor's consumption are
 listed as not measurable — so the printed total is explicitly "of what was measured".

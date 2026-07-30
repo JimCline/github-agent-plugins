@@ -582,14 +582,18 @@ that ran, the base spec, the file count, and the drop note if anything was dropp
 "the review didn't happen", and a silent clean over dropped findings violates the
 disclosure rule above. Then STOP: create no task list, skip L6 and L7, remove the
 assessment marker AND the session lock (Step 0), and close out — with no findings there
-are no fixes, so L8 has nothing to commit. Do not go looking for something to report to
+are no fixes, so L8 has nothing to commit, but the clean report still **ends with the
+Review stats block** (defined in L8): agents ran on chosen models whether or not they
+found anything, and "reviewed clean" with no stats is this block's most common way of
+going missing. Do not go looking for something to report to
 fill the silence.
 
 In the **GitHub PR flow** the trigger is the same, but two things still have to happen:
 the worktree exists and the review marker is set. Report clean, dispatch G7's CLEANUP
 (its zero-comments variant — reachable directly from here; G5.5 and G6 are skipped along
 with everything else), then remove the review marker per step 0.1. Closing out without
-that dispatch leaks the worktree.
+that dispatch leaks the worktree — and the clean report ends with the Review stats
+block here too.
 
 ### FEEDBACK TONE — wording only, never substance
 
@@ -854,10 +858,17 @@ down by severity and name every unfixed **Critical/High** individually with its
 `file:line`. A Critical the user skipped is the single most important thing on the way
 out, and it is exactly what a flat count buries.
 
-### Review stats (append to the closing summary — both flows)
+### Review stats (append to the closing summary — both flows, EVERY exit path)
 
 End the summary with a short **Review stats** block: who did the work, on what model, and
-what it cost where cost is actually known. Three sourcing rules govern every line:
+what it cost where cost is actually known. **The block is part of what "summarize" means
+in this flow — it prints on every exit path**: the normal L8/G7 close, the L5.0
+clean-review exit, and a review the user winds down early after agents ran. Having no
+measured numbers changes the block's SHAPE (see the collapse rule below), never its
+presence. If you are about to end a review without it, you have made the mistake — the
+same class of miss as sending the L3 ask without its fourth tab.
+
+Four sourcing rules govern every line:
 
 1. **Copy, never estimate.** A token number appears here ONLY if it was carried in a
    dispatch's result metadata (some harnesses append a usage block — e.g.
@@ -873,6 +884,14 @@ what it cost where cost is actually known. Three sourcing rules govern every lin
    `advisor` calls are not measurable from inside the session — print them as
    `not measurable`, so the table's total reads as "of what was measured" and not as the
    cost of the review.
+4. **Capture at RETURN time, not at summary time.** Usage metadata arrives attached to
+   each dispatch's result — and in a long review those results scroll away or get
+   compacted long before the summary is written. The moment a result carrying usage
+   comes back, note the number in one visible line (`stats: security 38.9k · 41 tools ·
+   3m12s` — batch several returns into one line), and build the block from those notes.
+   This is why a review that plainly HAD per-agent numbers mid-run can end with none: no
+   one wrote them down. A number you failed to capture reads `tokens: not reported`,
+   same as one never sent — never reconstruct it from memory.
 
 Shape (adapt, don't pad — one line per agent that ran):
 

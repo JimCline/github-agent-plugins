@@ -80,6 +80,12 @@ result metadata verbatim, never estimated — a line with no metadata reads
 always shown; your own and the advisor's consumption are `not measurable` and printed as
 such, so the total reads as "of what was measured". Per-category reviewers make agent
 cost = area cost; `code-reviewer-all` is one unsplittable number — never apportion it.
+The block prints on EVERY exit path — including the L5.0 clean-review exit and an
+early wind-down — and having no measured numbers changes its shape, never its
+presence; ending a review without it is the same class of miss as dropping the model
+tab. **Capture each usage number in one visible line as its dispatch returns**: in a
+long review the raw results are compacted away before the summary, and an uncaptured
+number is `not reported` — never reconstructed from memory.
 
 **The findings task list is a tracking artifact, never a work queue.** Findings become
 tasks when they're PRESENTED, all `pending`, and nothing leaves `pending` until the user
