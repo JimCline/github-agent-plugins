@@ -102,7 +102,7 @@ tools are missing or the call errors, return `failed: <the exact error, verbatim
 e.g. `failed: No such tool available: mcp__plugin_github-pr-toolkit_github__pull_request_read`. No other text."*
 
 **Phrase it positively, as above.** Do NOT write dispatch prompts with exclusionary
-wording like "ONLY use X" / "Y is FORBIDDEN": the context-mode plugin injects its own
+wording like "ONLY use X" / "Y is FORBIDDEN": ambient hooks may inject their own
 tool-routing text into every subagent prompt, and the permission classifier reads
 your prohibition + its suggestion as two conflicting instruction sources — a
 prompt-injection signature — and blocks the dispatch. State what success means

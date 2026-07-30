@@ -44,8 +44,7 @@ first-class **Other** answer that sets `advisor: none`; mention it exists.
 **A code review must not alter code**, and the reviewer agents enforce that structurally:
 no `tools:` allowlist (they inherit the session's tools, so any memory MCP server comes
 along) plus a `disallowedTools` list removing `Write`/`Edit`/`MultiEdit`/`NotebookEdit`
-and the GitHub MCP server. The guard hook holds both Bash and `ctx_*` payloads to
-read-only inspection. **Memory:** every review path reads memory first if the session has
+and the GitHub MCP server. The guard hook holds their Bash to read-only inspection. **Memory:** every review path reads memory first if the session has
 it — a recorded decision explaining why odd code is odd is the best defence against
 reporting a deliberate choice as a defect. Reviewers may write durable repo-level facts
 but **never a finding**; findings-derived lessons are yours to record, and only after the

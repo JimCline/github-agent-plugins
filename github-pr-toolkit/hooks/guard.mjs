@@ -94,9 +94,6 @@ const WRAPPER_HEADS = new Set([
   'command', 'nohup', 'time', 'timeout', 'sudo', 'doas', 'script', 'nice',
 ]);
 
-// tool_input keys whose string value is a SHELL COMMAND (see commandLeaves).
-const COMMAND_KEYS = /^(code|command|cmd|script|shell|input|args)$/i;
-
 function readInput() {
   try {
     return JSON.parse(readFileSync(0, 'utf8') || '{}');
@@ -120,11 +117,6 @@ const tool = input.tool_name || '';
 const cmd = (input.tool_input && input.tool_input.command) || '';
 
 const isToolkitMcp = /^mcp__plugin_github-pr-toolkit_github__/.test(tool);
-
-// Declared HERE, above the subagent branch, because both the reviewer ctx_* gate
-// and the main-agent gh gate need it — and a `const` referenced before its line
-// throws (see the placement note above MAX_AGE_MS).
-const isCtxExec = /ctx_(execute|batch_execute)$/.test(tool);
 
 // Subagents (they carry agent_id) are the delegates. For THIS PLUGIN'S workers,
 // actively GRANT the GitHub MCP tools — plugin agents' `permissionMode:
@@ -178,42 +170,6 @@ if (input.agent_id) {
     process.exit(0);
   }
 
-  // A reviewer's SHELL must be read-only whichever tool carries it. `ctx_execute`
-  // takes its command in `code`, so the Bash grant above never inspects it — and
-  // the reviewer agents no longer pin a `tools:` allowlist (they inherit the
-  // session's tools so any memory MCP server comes along), which makes this path
-  // ordinarily reachable rather than theoretical. Without this branch,
-  // `ctx_execute(code: "echo x > src/app.ts")` is a review that edits code, which
-  // is the one thing a code review must never do.
-  //
-  // DENY here rather than fall through: falling through auto-denies a
-  // non-interactive subagent anyway, but silently, so the reviewer would retry
-  // the same call and burn its turn. An explicit reason tells it to use Bash.
-  if (reviewer && isCtxExec) {
-    const leaves = commandLeaves(input.tool_input);
-    if (!leaves.every((s) => isReviewerSafeBash(s))) {
-      process.stderr.write(
-        'code-critic review guard: this review is a STATIC pass — it reads code and ' +
-          'never alters it. That holds for every shell channel, so a ctx_* payload is ' +
-          'held to the same read-only standard as Bash: no writes, no redirection, no ' +
-          '`sed -i`, no outbound git or `gh`, no test/build execution. Inspect with ' +
-          'Read/Grep/Glob or read-only git via the Bash tool instead. If confirming a ' +
-          'finding genuinely needs to run something, say so IN the finding (mark it ' +
-          'uncertain and name what would confirm it) — the orchestrator asks the user.'
-      );
-      process.exit(2);
-    }
-    process.stdout.write(
-      JSON.stringify({
-        hookSpecificOutput: {
-          hookEventName: 'PreToolUse',
-          permissionDecision: 'allow',
-          permissionDecisionReason:
-            'github-pr-toolkit review subagent — ctx_* payload is read-only inspection only',
-        },
-      })
-    );
-  }
   process.exit(0);
 }
 
@@ -246,22 +202,7 @@ if (isGithubMcp) {
 // resolve-pr-comments step 0.3 need to run WHEN THE MCP PATH IS BROKEN. Blocking
 // them would break the diagnostic whose job is diagnosing this. Everything else
 // under `gh` — including read-only calls like `gh pr view` — is delegated.
-// SECOND SHELL CHANNEL. Bash is not the only way to run a command: the
-// context-mode plugin exposes `ctx_execute` / `ctx_batch_execute`, which take the
-// shell command in `code` (not `command`) and are session-visible to the main
-// agent — both worker files list them precisely because they are reachable. A
-// gate keyed only on `tool === 'Bash'` therefore has a door beside it, and
-// `ctx_execute(language: "bash", code: "gh pr create")` walks through. Verified
-// empirically: before this branch, that input returned rc=0.
-//
-// The blob is scanned rather than parsed, because the argument shape belongs to
-// another plugin and may change. Erring toward denial is right here: a false
-// block costs one retry through Bash, where the precise tokenizer applies.
-const ctxBlocked =
-  isCtxExec &&
-  stringLeaves(input.tool_input).some((s) => ghTextBlocked(s));
-
-if ((tool === 'Bash' && isGhBlocked(cmd)) || ctxBlocked) {
+if (tool === 'Bash' && isGhBlocked(cmd)) {
   process.stderr.write(
     'github-pr-toolkit gate: the main agent never runs `gh` — ALL GitHub I/O is ' +
       'delegated so raw API payloads stay out of your context. This is not ' +
@@ -294,25 +235,6 @@ const assessing =
   (input.session_id &&
     lockActive(input.cwd, `code-critic-${input.session_id}.assessing`)) ||
   lockActive(input.cwd, 'code-critic.assessing');
-
-// The two tiers below (`assessing`, `isOutboundGit`) inspect a shell command by
-// TOKENIZING it, which a ctx_* payload does not survive — so during a review the
-// opaque channel is closed outright rather than approximated. Without this,
-// `ctx_execute(code: "npm test")` defeats the static-review gate and
-// `ctx_execute(code: "git push")` defeats the outbound-git tier, both silently.
-// Outside a review the ctx_* tools stay unrestricted apart from the `gh` scan
-// above — this is a review-time restriction, matching the tiers it protects.
-if (isCtxExec && (armed || assessing)) {
-  process.stderr.write(
-    'code-critic guard: while a review is active, run shell commands through the ' +
-      'Bash tool, not the context-mode ctx_* tools. The guard inspects Bash ' +
-      'commands precisely (read-only inspection is allowed during assessment; ' +
-      'outbound git is delegated to `critic-worker`); it cannot apply those rules ' +
-      'to an opaque ctx_* payload, so it declines instead of guessing. Re-issue ' +
-      `this as a Bash call. Blocked: ${tool}`
-  );
-  process.exit(2);
-}
 
 if (assessing && tool === 'Bash' && !isReadOnlyBash(cmd)) {
   process.stderr.write(
@@ -363,7 +285,7 @@ process.exit(0);
 // follow `auth status` (e.g. `--hostname`, `2>&1`) since none of them reach
 // repository data. `gh auth token` is NOT allowed — it prints the PAT.
 // Regex scan for `gh` at a plausible command position inside text that CANNOT be
-// tokenized reliably — a quoted wrapper payload, or a ctx_* argument blob.
+// tokenized reliably — currently a quoted wrapper payload (`bash -c "…"`).
 // Quote characters count as delimiters here (that is the whole point: `-c "gh
 // …"`), which does mean `bash -c "grep 'gh api' f"` is refused. That asymmetry is
 // deliberate: at the top level the tokenizer is precise enough to exempt a grep,
@@ -376,57 +298,6 @@ function ghTextBlocked(text) {
     if (!GH_DIAGNOSTIC.test(m[1].trim())) return true;
   }
   return false;
-}
-
-// Every string leaf in a tool_input object, joined. Used for the ctx_* execute
-// tools, whose shape (`code` for ctx_execute, an array of items for
-// ctx_batch_execute) is another plugin's contract and can change under us —
-// walking every string is shape-agnostic, so a renamed or nested field cannot
-// silently reopen the gate.
-function stringLeaves(value, out = []) {
-  if (typeof value === 'string') out.push(value);
-  else if (Array.isArray(value)) for (const v of value) stringLeaves(v, out);
-  else if (value && typeof value === 'object')
-    for (const v of Object.values(value)) stringLeaves(v, out);
-  return out;
-}
-
-// The subset of string leaves that are actually SHELL COMMANDS, by key name.
-// stringLeaves() is right for the gh scan (scanning a stray `language: "bash"` for
-// `gh` is harmless), but wrong for a read-only check: `isReviewerSafeBash("bash")`
-// is false, so feeding it every leaf would refuse every ctx_* call including plain
-// reads. Keys are matched rather than values because a command is not
-// distinguishable from prose by inspection.
-//
-// FAIL-CLOSED: if no key matches but strings are present, return ALL of them. An
-// unrecognized payload shape then reads as "all command", so a renamed field in
-// another plugin's contract cannot quietly turn the check off — it makes it
-// stricter instead, and the reviewer's fallback is the Bash tool.
-function commandLeaves(toolInput) {
-  const out = [];
-  collectCommands(toolInput, out);
-  // Fail-closed, and ONLY at the top level: no recognized command key anywhere
-  // means the shape is unrecognized, so treat every string as a command.
-  if (out.length) return out;
-  return stringLeaves(toolInput);
-}
-
-function collectCommands(value, out) {
-  if (Array.isArray(value)) {
-    for (const v of value) collectCommands(v, out);
-  } else if (value && typeof value === 'object') {
-    for (const [k, v] of Object.entries(value)) {
-      // stringLeaves, not push: a command key may hold a STRING (`code: "…"`) or
-      // an ARRAY of them (`args: ["rm", "-rf"]`). Pushing only strings would let
-      // an argv-style payload through unchecked.
-      if (COMMAND_KEYS.test(k)) stringLeaves(v, out);
-      else collectCommands(v, out);
-    }
-  }
-  // A string under a NON-command key is deliberately not collected. ctx_execute
-  // runs what is in `code`; a string parked under `note` or `extra.nested` is not
-  // executed, so treating it as a command would refuse ordinary reads for no
-  // safety gain. The renamed-field case is what the fail-closed fallback covers.
 }
 
 function isGhBlocked(command) {

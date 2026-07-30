@@ -48,11 +48,11 @@ permissionMode: bypassPermissions
 #   mcp__plugin_github-pr-toolkit_github — a reviewer has no business on GitHub;
 #     that is the workers' lane (server-level pattern, so it covers every tool).
 #
-# STILL REACHABLE, and gated at runtime instead: Bash and the context-mode ctx_*
-# tools. Both are shells, and a deny-list cannot express "read-only shell", so
-# hooks/guard.mjs holds BOTH to isReviewerSafeBash — no redirection, no `sed -i`,
-# no mutating heads, no outbound git/gh, no test execution. Denying them outright
-# would cost the reviewer read-only git, which is how it recomputes the diff.
+# STILL REACHABLE, and gated at runtime instead: Bash. A deny-list cannot express
+# "read-only shell", so hooks/guard.mjs holds it to isReviewerSafeBash — no
+# redirection, no `sed -i`, no mutating heads, no outbound git/gh, no test
+# execution. Denying Bash outright would cost the reviewer read-only git, which is
+# how it recomputes the diff.
 disallowedTools: >-
   Write,
   Edit,

@@ -167,45 +167,6 @@ same operation failed, and it must flag the fallback in its return
 (`via: gh (mcp error: …)`) so a broken MCP setup can't hide behind it. The preflight
 health check is MCP-only for the same reason. Recommended anyway.
 
-### 6. (Optional) context-mode allowance
-
-If you run the **context-mode** plugin, its `PreToolUse` hook redirects `WebFetch`/`Bash`
-to its own MCP tools. Subagents that use Bash (e.g. for the `gh` fallback) need those tools
-permission-allowed. This is a one-time **user-level** grant in `~/.claude/settings.json`:
-
-```json
-{
-  "permissions": {
-    "allow": [
-      "mcp__plugin_context-mode_context-mode__ctx_fetch_and_index",
-      "mcp__plugin_context-mode_context-mode__ctx_execute",
-      "mcp__plugin_context-mode_context-mode__ctx_batch_execute",
-      "mcp__plugin_context-mode_context-mode__ctx_execute_file"
-    ]
-  }
-}
-```
-
-It's independent of this plugin; skip it if you don't run context-mode.
-
-> **Known interaction (can block worker dispatches in auto mode):** context-mode's
-> `Agent` hook appends a ~4.5 KB `<context_window_protection>` routing block to
-> **every** subagent dispatch prompt, unconditionally and with no off switch. Claude
-> Code's auto-mode permission classifier evaluates the final dispatch prompt —
-> orchestrator text *plus* that injection — and "route through ctx_* / keep raw bytes
-> out of the transcript" pattern-matches an oversight-evasion signature, so dispatches
-> get rejected as an "Auto-Mode Bypass" **no matter how clean the orchestrator's own
-> prompt is** (re-sending stripped doesn't help; the injection is re-added downstream).
-> context-mode itself never denies anything — its hooks are advisory and fail-open.
-> Fixes, from surgical to blunt: **(a)** remove the single `"Agent"` matcher object
-> from context-mode's `hooks/hooks.json` (stops the injection, keeps the rest of
-> context-mode working; re-check after context-mode updates), **(b)** don't run the
-> toolkit's flows in auto mode while context-mode is enabled, or **(c)** disable
-> context-mode. Batching (one worker per write batch) also shrinks the exposure
-> surface — one classifier evaluation instead of N.
-
----
-
 ## GitHub token requirements
 
 The PAT authenticates the **worker's** GitHub API calls: reading PRs and review threads,
@@ -300,7 +261,7 @@ resolves every thread, returning `ok: <N> replied+resolved` (detail only for fai
 verified against the count sent) → final report.
 
 Batching and exception-only returns keep the orchestrator's context lean: each worker
-dispatch carries fixed overhead (and, under the context-mode plugin, a ~1.1k-token
+dispatch carries fixed overhead (plus anything ambient hooks inject, which can run to
 injected routing block), so a 5-thread run costs ~3 dispatches instead of 7+.
 
 ---
@@ -322,14 +283,15 @@ delegation gate is enforced by the plugin's `PreToolUse` guard hook
   **`gh --version`** (`/github-pr-toolkit:doctor` needs them when MCP is what's broken).
   Detection is at command position only, so `grep 'gh api' file` and `echo "run gh auth"`
   are not false-blocked — but wrapper heads (`bash -c "gh …"`, `xargs`, `env`, `eval`)
-  and the context-mode `ctx_execute` channel (which carries its command in `code`, not
-  `command`) are covered, since both are ways to reach a shell without `gh` at the head
-  of a Bash string. Inside the workers `gh` remains available as its gated fallback.
+  are covered, since a wrapper is a way to reach a shell without `gh` at the head of a
+  Bash string. Inside the workers `gh` remains available as its gated fallback.
 
 **Testing the guard:** `bash github-pr-toolkit/hooks/guard.test.sh` — 59 cases over
-every rule, both directions (blocked *and* allowed), including that the armed-window
-`ctx_*` closure does **not** reach the workers (`critic-worker` runs `git commit` in that
-exact window, and stranding it would present as a worktree bug nowhere near the hook).
+every rule, both directions (blocked *and* allowed), including that the armed-window git
+rules do **not** reach the workers (`critic-worker` runs `git commit` in that exact
+window, and stranding it would present as a worktree bug nowhere near the hook), and that
+a reviewer's mutating Bash is never *granted* — asserted on the grant itself, since exit 0
+covers both "allowed" and "not granted" and would hide a leaked grant.
 Worth running after any edit to `guard.mjs`, because this hook fails **silently**: an
 accidental exit 0, or a crash exiting 1, is indistinguishable from correct enforcement
 until something that should have been blocked succeeds.
@@ -346,14 +308,12 @@ would hide during a static review); re-issue without the wrapper.
   Bash ONLY when every command segment is read-only inspection** and nothing
   outbound (`gh` / `git push|commit|worktree|pull`) rides along; anything else falls
   through and auto-denies, which enforces their static-review contract by
-  construction. They are never granted the GitHub MCP tools. **The same read-only
-  standard is applied to their `ctx_*` payloads**, because a review that edits code
-  through a second shell channel is still a review that edits code — the reviewer
-  agents ship no `tools:` allowlist (so any memory MCP server the session has comes
-  along without enumeration), which makes that channel ordinarily reachable rather
-  than theoretical. Their `disallowedTools` removes `Write`/`Edit`/`MultiEdit`/
-  `NotebookEdit` outright; shells can't be denied that way without costing them
-  read-only git, so the hook gates them at runtime.
+  construction. They are never granted the GitHub MCP tools. The reviewer agents ship
+  no `tools:` allowlist — they inherit the session's tools, so any memory MCP server
+  present comes along without enumeration — and their `disallowedTools` removes
+  `Write`/`Edit`/`MultiEdit`/`NotebookEdit` outright. Bash can't be denied that way
+  without costing them the read-only git they use to recompute the diff, so the hook
+  gates it at runtime instead.
 - **Any other subagent → normal permission flow** (prompt/rules decide). The resolve
   flow's `thread-assessor` lands here by design: it matches neither grant above, so it
   is shipped with **no Bash at all** (`Read`/`Grep`/`Glob` + `advisor` only, none of
@@ -424,10 +384,9 @@ then walks you through the fix and re-probes.
   registration` is a bad-PAT 401 in disguise (the bridge's OAuth fallback failing) —
   fix the PAT, ignore the OAuth wording.
 - **Worker dispatches blocked by the permission classifier.** Don't phrase worker
-  prompts with "ONLY use X" / "Y is FORBIDDEN" — combined with context-mode's injected
+  prompts with "ONLY use X" / "Y is FORBIDDEN" — combined with any text ambient hooks
   tool-routing text, it reads as conflicting instruction sources (an injection
   signature). State what success means instead of banning tools.
 - **Can reply but can't resolve threads.** The token's user lacks write/triage on the repo,
   or (on a non-official server) thread resolution isn't exposed — install/auth `gh` for the
   fallback.
-- **Subagent can't use `gh` / Bash under context-mode.** Apply the step-6 allowance above.

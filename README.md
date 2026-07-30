@@ -80,10 +80,9 @@ write, Contents: Read** — see the [plugin README](github-pr-toolkit/README.md#
 - **A code review cannot alter code**, structurally: the reviewer agents ship no `tools:`
   allowlist (so they inherit any memory MCP server the session has, with nothing to
   enumerate) and a `disallowedTools` list that removes `Write`/`Edit`/`MultiEdit`/
-  `NotebookEdit` and the GitHub MCP server. Shells stay reachable because read-only git is
-  how a reviewer recomputes the diff — the guard hook holds **both** Bash and the
-  context-mode `ctx_*` channel to read-only inspection at runtime, since a deny-list can't
-  express "read-only shell". Reviewers read memory for prior insight and may record
+  `NotebookEdit` and the GitHub MCP server. Bash stays reachable because read-only git is
+  how a reviewer recomputes the diff — a deny-list can't express "read-only shell", so
+  the guard hook holds it to read-only inspection at runtime. Reviewers read memory for prior insight and may record
   durable repo facts, but never write a **finding**: unverified at the moment they hold
   it, and a memory is recalled as fact by every later review.
 - resolve-pr-comments gates on the user before any reasoning happens: it presents the

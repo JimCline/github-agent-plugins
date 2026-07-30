@@ -16,7 +16,7 @@ description: >-
 # are not supported for plugin-shipped agents", plugins-reference), and it was first hit
 # empirically here on 2.1.206. Kept only as documentation of intent. The ACTUAL grant
 # lives in hooks/guard.mjs, whose reviewer branch matches any `code-reviewer-<slug>`, so
-# this agent gets the same read-only Bash and ctx_* gating as the per-category reviewers
+# this agent gets the same read-only Bash gating as the per-category reviewers
 # with no hook change needed.
 permissionMode: bypassPermissions
 
@@ -28,8 +28,8 @@ permissionMode: bypassPermissions
 #   Write / Edit / MultiEdit / NotebookEdit — A CODE REVIEW MUST NOT ALTER CODE.
 #     Structural, not a request. A memory-MCP write is NOT a code write.
 #   mcp__plugin_github-pr-toolkit_github — reviewers have no business on GitHub.
-# Bash and the context-mode ctx_* tools stay reachable (read-only git is how the diff
-# gets recomputed); the guard hook holds BOTH to read-only inspection at runtime.
+# Bash stays reachable (read-only git is how the diff gets recomputed); the guard
+# hook holds it to read-only inspection at runtime.
 disallowedTools: >-
   Write,
   Edit,

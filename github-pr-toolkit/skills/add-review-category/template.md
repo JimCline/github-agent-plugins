@@ -31,9 +31,9 @@ description: >-
 #     Structural, not a request. (A memory-MCP write is not a code write — you may
 #     record durable insight while being unable to touch one source file.)
 #   mcp__plugin_github-pr-toolkit_github — reviewers have no business on GitHub.
-# Bash and the context-mode ctx_* tools stay reachable because a deny-list cannot
-# express "read-only shell"; github-pr-toolkit's guard hook holds BOTH to read-only,
-# non-outbound inspection at runtime instead. Keep this list as-is.
+# Bash stays reachable because a deny-list cannot express "read-only shell";
+# github-pr-toolkit's guard hook holds it to read-only, non-outbound inspection at
+# runtime instead. Keep this list as-is.
 disallowedTools: >-
   Write,
   Edit,

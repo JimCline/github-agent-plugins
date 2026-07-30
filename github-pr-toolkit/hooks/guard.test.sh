@@ -5,8 +5,8 @@
 # exit 2 looks exactly like a hook that correctly allowed the call — there is no
 # error, no log line, nothing to notice until someone runs `gh pr create` and it
 # works. Three real defects were caught here rather than in the wild:
-#   - `ctx_execute(language:"bash", code:"gh pr create")` bypassed a gate keyed on
-#     `tool === "Bash"` entirely (the command lives in `code`, not `command`).
+#   - a second MCP shell channel bypassed a gate keyed on `tool === "Bash"`
+#     entirely, because its command lived in a different argument field.
 #   - wrapper heads (`bash -c "gh …"`, `xargs gh …`, `env gh …`) walked past
 #     command-position detection, a regression against the older regex.
 #   - a `const` declared beside its helper at the bottom of the file threw
@@ -35,6 +35,25 @@ check() {
 }
 
 bash_input() { printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":"%s","session_id":"S1"}' "$1" "$SANDBOX"; }
+
+# For SUBAGENT cases, exit 0 is ambiguous: it means either "actively granted" or
+# "no decision — fall through". Those differ in consequence. A non-interactive
+# subagent whose call falls through is auto-denied by the permission layer, so
+# "not granted" IS the denial for reviewers — but a test asserting rc=0 cannot
+# tell the two apart, and would pass just as happily if a grant leaked in.
+# So assert on the grant itself: granted emits allow JSON on stdout, not-granted
+# emits nothing.
+check_grant() {
+  local want="$1" desc="$2" json="$3"   # want: granted | not-granted
+  local out got
+  out=$(printf '%s' "$json" | node "$GUARD" 2>/dev/null)
+  if grep -q '"permissionDecision":"allow"' <<<"$out"; then got=granted; else got=not-granted; fi
+  if [ "$got" = "$want" ]; then
+    pass=$((pass+1)); printf 'ok    (%s) %s\n' "$got" "$desc"
+  else
+    fail=$((fail+1)); printf 'FAIL  want=%s got=%s  %s\n' "$want" "$got" "$desc"
+  fi
+}
 
 echo "=== always-on gh gate (main agent, NO locks) ==="
 check 2 'gh pr create'                 "$(bash_input '"gh pr create --title x --body y"')"
@@ -72,15 +91,6 @@ check 2 'timeout 5 gh pr list'         "$(bash_input '"timeout 5 gh pr list"')"
 check 0 'bash -c with diagnostic only' "$(bash_input '"bash -c \"gh auth status\""')"
 check 0 'bash -c unrelated'            "$(bash_input '"bash -c \"npm test\""')"
 
-echo "=== ctx_* second shell channel (command lives in \`code\`, not \`command\`) ==="
-ctx_input() { printf '{"tool_name":"mcp__plugin_context-mode_context-mode__ctx_execute","tool_input":{"language":"bash","code":%s},"cwd":"%s","session_id":"S1"}' "$1" "$SANDBOX"; }
-check 2 'ctx_execute gh pr create'     "$(ctx_input '"gh pr create --title x"')"
-check 2 'ctx_execute gh api'           "$(ctx_input '"gh api repos/o/r/pulls"')"
-check 2 'ctx_batch nested payload'     "{\"tool_name\":\"mcp__plugin_context-mode_context-mode__ctx_batch_execute\",\"tool_input\":{\"items\":[{\"language\":\"bash\",\"code\":\"gh pr create\"}]},\"cwd\":\"$SANDBOX\",\"session_id\":\"S1\"}"
-check 0 'ctx_execute unrelated code'   "$(ctx_input '"npm run build"')"
-check 0 'ctx_execute gh auth status'   "$(ctx_input '"gh auth status"')"
-check 0 'ctx_execute no tool_input'    "{\"tool_name\":\"mcp__plugin_context-mode_context-mode__ctx_execute\",\"cwd\":\"$SANDBOX\",\"session_id\":\"S1\"}"
-
 echo "=== armed-only git tier: UNARMED, so allowed ==="
 check 0 'git commit unarmed'           "$(bash_input '"git commit -m wip"')"
 check 0 'git push unarmed'             "$(bash_input '"git push origin main"')"
@@ -96,7 +106,6 @@ check 0 'git fetch ARMED'              "$(bash_input '"git fetch origin"')"
 check 0 'git diff ARMED'               "$(bash_input '"git diff origin/main"')"
 check 0 'gh auth status ARMED'         "$(bash_input '"gh auth status"')"
 check 2 'gh pr create ARMED'           "$(bash_input '"gh pr create"')"
-check 2 'ctx_execute closed ARMED'     "$(ctx_input '"npm test"')"
 rm -f "$SANDBOX/.git/code-critic-S1.lock"
 
 echo "=== assessing gate ==="
@@ -104,7 +113,6 @@ touch "$SANDBOX/.git/code-critic-S1.assessing"
 check 2 'npm test while assessing'     "$(bash_input '"npm test"')"
 check 0 'git diff while assessing'     "$(bash_input '"git diff"')"
 check 2 'gh pr view while assessing'   "$(bash_input '"gh pr view 5"')"
-check 2 'ctx_execute closed ASSESSING' "$(ctx_input '"npm test"')"
 rm -f "$SANDBOX/.git/code-critic-S1.assessing"
 
 echo "=== MCP gate (always on) ==="
@@ -114,48 +122,27 @@ check 0 'github-worker granted MCP'    "{\"tool_name\":\"mcp__plugin_github-pr-t
 check 0 'reviewer subagent read git'   "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git diff\"},\"agent_id\":\"a2\",\"agent_type\":\"code-reviewer-general\",\"cwd\":\"$SANDBOX\"}"
 check 0 'subagent gh not gated by hook' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"gh pr create\"},\"agent_id\":\"a3\",\"agent_type\":\"github-worker\",\"cwd\":\"$SANDBOX\"}"
 
-# The armed-window ctx_* closure must NOT reach the workers. context-mode's hook
-# rewrites a subagent's Bash into ctx_* calls, and critic-worker runs
-# `git worktree` / `git commit` during exactly the armed window — if the closure
-# caught it, the worker would strand mid-review and it would present as a
-# worktree bug, nowhere near this file. The subagent branch exits before the
-# closure; these two cases are what keep that ordering from being refactored away.
-echo "=== workers must survive the armed-window ctx_* closure ==="
+# The armed-window Bash rules must NOT reach the workers: critic-worker runs
+# `git worktree` / `git commit` during exactly that window, and if the outbound-git
+# tier caught it the worker would strand mid-review and present as a worktree bug,
+# nowhere near this file. The subagent branch exits before those tiers; these cases
+# keep that ordering from being refactored away.
+echo "=== workers must survive the armed-window Bash rules ==="
+# ARM FIRST — these cases are meaningless unarmed, and an unarmed pass would look
+# identical to a real one.
 touch "$SANDBOX/.git/code-critic-S1.lock"
 touch "$SANDBOX/.git/code-critic-S1.assessing"
-check 0 'critic-worker ctx git commit ARMED' "{\"tool_name\":\"mcp__plugin_context-mode_context-mode__ctx_execute\",\"tool_input\":{\"language\":\"bash\",\"code\":\"git commit -m x\"},\"agent_id\":\"a4\",\"agent_type\":\"critic-worker\",\"cwd\":\"$SANDBOX\",\"session_id\":\"S1\"}"
-check 0 'reviewer ctx read ASSESSING'        "{\"tool_name\":\"mcp__plugin_context-mode_context-mode__ctx_execute\",\"tool_input\":{\"language\":\"bash\",\"code\":\"git diff\"},\"agent_id\":\"a5\",\"agent_type\":\"code-reviewer-general\",\"cwd\":\"$SANDBOX\",\"session_id\":\"S1\"}"
-
-# A CODE REVIEW MUST NOT ALTER CODE — and that has to hold for every shell channel,
-# not just Bash. Reviewers no longer pin a `tools:` allowlist (they inherit the
-# session's tools so any memory MCP comes along), which makes ctx_* ordinarily
-# reachable rather than theoretical.
-rev() { printf '{"tool_name":"mcp__plugin_context-mode_context-mode__ctx_execute","tool_input":{"language":"bash","code":%s},"agent_id":"r1","agent_type":"%s","cwd":"%s"}' "$1" "${2:-code-reviewer-general}" "$SANDBOX"; }
-echo "=== reviewer ctx_* payloads held to read-only (a review never edits code) ==="
-check 2 'reviewer ctx redirect to file'  "$(rev '"echo x > src/app.ts"')"
-check 2 'reviewer ctx append to file'    "$(rev '"echo x >> src/app.ts"')"
-check 2 'reviewer ctx sed -i'            "$(rev '"sed -i s/a/b/ src/app.ts"')"
-check 2 'reviewer ctx rm'                "$(rev '"rm -rf src"')"
-check 2 'reviewer ctx npm test'          "$(rev '"npm test"')"
-check 2 'reviewer ctx git push'          "$(rev '"git push origin main"')"
-check 2 'reviewer ctx gh pr create'      "$(rev '"gh pr create"')"
-check 0 'reviewer ctx git diff'          "$(rev '"git diff origin/main"')"
-check 0 'reviewer ctx grep'              "$(rev '"grep -rn TODO src | head -20"')"
-check 2 'code-reviewer-all ctx write'    "$(rev '"echo x > src/app.ts"' 'code-reviewer-all')"
-check 0 'code-reviewer-all ctx read'     "$(rev '"git diff origin/main"' 'code-reviewer-all')"
-check 0 'reviewer Bash read still ok'    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git log -5\"},\"agent_id\":\"r2\",\"agent_type\":\"code-reviewer-all\",\"cwd\":\"$SANDBOX\"}"
-# commandLeaves is FAIL-CLOSED: a payload shape with no recognized command key
-# reads as all-command, so another plugin renaming its field makes the check
-# stricter rather than silently switching it off.
-check 2 'reviewer ctx unknown shape'     "{\"tool_name\":\"mcp__plugin_context-mode_context-mode__ctx_execute\",\"tool_input\":{\"language\":\"bash\",\"payload\":{\"deep\":\"rm -rf src\"}},\"agent_id\":\"r3\",\"agent_type\":\"code-reviewer-general\",\"cwd\":\"$SANDBOX\"}"
-# argv-style: a command key holding an ARRAY must be checked, not skipped.
-check 2 'reviewer ctx args array'        "{\"tool_name\":\"mcp__plugin_context-mode_context-mode__ctx_execute\",\"tool_input\":{\"args\":[\"rm -rf src\"]},\"agent_id\":\"r4\",\"agent_type\":\"code-reviewer-general\",\"cwd\":\"$SANDBOX\"}"
-# Mixed shape: `code` is recognized, so the fallback correctly does NOT fire and
-# the string under `extra.nested` is not treated as a command. That is deliberate
-# — ctx_execute runs `code`; an unexecuted string is not a mutation risk, and
-# treating it as one would refuse ordinary reads. Asserted so the choice is visible.
-check 0 'reviewer ctx mixed shape read'  "{\"tool_name\":\"mcp__plugin_context-mode_context-mode__ctx_execute\",\"tool_input\":{\"code\":\"git diff\",\"extra\":{\"nested\":\"rm -rf src\"}},\"agent_id\":\"r5\",\"agent_type\":\"code-reviewer-general\",\"cwd\":\"$SANDBOX\"}"
-check 2 'MAIN agent ctx still closed ARMED'  "{\"tool_name\":\"mcp__plugin_context-mode_context-mode__ctx_execute\",\"tool_input\":{\"language\":\"bash\",\"code\":\"git commit -m x\"},\"cwd\":\"$SANDBOX\",\"session_id\":\"S1\"}"
+check 0 'critic-worker git commit ARMED'  "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m x\"},\"agent_id\":\"a4\",\"agent_type\":\"critic-worker\",\"cwd\":\"$SANDBOX\",\"session_id\":\"S1\"}"
+check 0 'reviewer git diff ASSESSING'     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git diff\"},\"agent_id\":\"a5\",\"agent_type\":\"code-reviewer-general\",\"cwd\":\"$SANDBOX\",\"session_id\":\"S1\"}"
+# A CODE REVIEW MUST NOT ALTER CODE. The hook's half of that is refusing to GRANT a
+# mutating command — the platform then auto-denies the ungranted call. Asserted as
+# grant/no-grant, since rc=0 covers both and would hide a leaked grant.
+check_grant not-granted 'reviewer write via Bash not granted' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo x > src/app.ts\"},\"agent_id\":\"a6\",\"agent_type\":\"code-reviewer-all\",\"cwd\":\"$SANDBOX\",\"session_id\":\"S1\"}"
+check_grant not-granted 'reviewer sed -i not granted'         "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"sed -i s/a/b/ src/app.ts\"},\"agent_id\":\"a7\",\"agent_type\":\"code-reviewer-general\",\"cwd\":\"$SANDBOX\",\"session_id\":\"S1\"}"
+check_grant not-granted 'reviewer npm test not granted'       "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"npm test\"},\"agent_id\":\"a8\",\"agent_type\":\"code-reviewer-general\",\"cwd\":\"$SANDBOX\",\"session_id\":\"S1\"}"
+check_grant not-granted 'reviewer gh not granted'             "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"gh pr create\"},\"agent_id\":\"a9\",\"agent_type\":\"code-reviewer-general\",\"cwd\":\"$SANDBOX\",\"session_id\":\"S1\"}"
+check_grant granted     'reviewer read git IS granted'        "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git diff origin/main\"},\"agent_id\":\"b1\",\"agent_type\":\"code-reviewer-all\",\"cwd\":\"$SANDBOX\",\"session_id\":\"S1\"}"
+check_grant not-granted 'reviewer never granted GitHub MCP'   "{\"tool_name\":\"mcp__plugin_github-pr-toolkit_github__pull_request_read\",\"agent_id\":\"b2\",\"agent_type\":\"code-reviewer-general\",\"cwd\":\"$SANDBOX\",\"session_id\":\"S1\"}"
 
 # Documented limitation, asserted so it cannot drift silently: the assessing gate
 # and the reviewer grant are HEAD-ONLY — they do not look inside a wrapper

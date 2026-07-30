@@ -92,7 +92,7 @@ review lock — this is not a review):
    not exist reads exactly like an auth failure and would send the whole diagnosis the
    wrong way.
    Phrase them positively as above — no "ONLY"/"FORBIDDEN" wording (exclusionary
-   phrasing + context-mode's injected routing text reads as a prompt injection to the
+   phrasing + any injected routing text reads as a prompt injection to the
    permission classifier and gets the dispatch blocked).
 3. Interpret for the user (per worker):
    - `mcp: ok` on both → the server, PAT, and both workers are healthy.

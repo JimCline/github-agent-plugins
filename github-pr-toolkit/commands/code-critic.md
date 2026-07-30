@@ -751,7 +751,7 @@ call succeeds, return EXACTLY `ok`. If the `mcp__plugin_github-pr-toolkit_github
 call errors, return `failed: <the exact error, verbatim>`. No other text."*
 
 **Phrase dispatches positively.** Never use exclusionary wording like "ONLY use X" /
-"Y is FORBIDDEN" in a worker prompt: context-mode injects its own tool-routing text
+"Y is FORBIDDEN" in a worker prompt: ambient hooks may inject their own tool-routing text
 into every subagent prompt, and the classifier reads your prohibition + its suggestion
 as conflicting instruction sources (an injection signature) and blocks the dispatch.
 State what success means instead of banning tools.

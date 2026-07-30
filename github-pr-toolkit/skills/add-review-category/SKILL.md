@@ -60,10 +60,13 @@ Then validate:
 
 - `name:` matches `code-reviewer-<slug>` (kebab-case) and doesn't collide (as in 2a).
   The filename must equal `<name>.md`.
-- Frontmatter parses; `tools:` is a SUBSET of: `Read, Grep, Glob, Bash, advisor,`
-  the three `mcp__plugin_context-mode_context-mode__ctx_*` tools. Any
-  `mcp__plugin_github-pr-toolkit_github__*` tool, Write/Edit/Task/WebFetch, or other
-  extras → flag it.
+- Frontmatter parses; there is **no `tools:` allowlist** (the template deliberately
+  omits it so the agent inherits the session's tools — that is how any memory MCP
+  server reaches it, with nothing to enumerate) and **`disallowedTools:` is present
+  and includes at minimum `Write, Edit, MultiEdit, NotebookEdit` plus
+  `mcp__plugin_github-pr-toolkit_github`**. A CODE REVIEW MUST NOT ALTER CODE, and
+  that deny-list is the structural guarantee — if a `tools:` allowlist was added, or
+  any of those deny entries is missing, flag it and restore the template's list.
 - `permissionMode:` present → flag it and strip it (outside the plugin it IS honored,
   and `bypassPermissions` would unbound the agent's Bash — the guard hook is the
   intended grant).

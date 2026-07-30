@@ -1,11 +1,21 @@
 {
   "name": "github-pr-toolkit",
-  "version": "0.25.0",
+  "version": "0.26.0",
   "description": "Pull-request toolkit: /resolve-pr-comments works through the review threads reviewers opened (present the found threads, ask how to research them — fan out one thread-assessor subagent per thread, one at a time, or inline — on a user-selected model, then reply, fix, resolve — tracked as a task list); /code-critic authors an adversarial review of a local diff or a GitHub PR across user-selected categories (general, security, design, rules-adherence, performance, tests, plus user-defined categories via the add-review-category wizard) via parallel per-category review subagents — or a single code-reviewer-all subagent covering every selected category in one dispatch — running on a user-selected model (session default, Opus, Sonnet, or Fable — one model across every category), with severity-triaged findings tracked as a task list, fix locally or post inline comments as one review, in a configurable feedback tone (terse / balanced / suggestion) that governs wording without touching severity or which findings are reported. One architecture: a high-reasoning orchestrator delegates ALL GitHub and outbound-git work to Haiku workers over GitHub's hosted MCP server. Delegation is enforced always, not only inside a flow: a PreToolUse guard hook denies the main agent both the GitHub MCP tools AND the gh CLI in every session (carve-outs: gh auth status, gh --version), while github-worker can read, list, search, open, and update pull requests so the delegated path is never a dead end — it will not merge one.",
   "author": {
     "name": "Jim Cline"
   },
-  "keywords": ["github", "pull-request", "review-comments", "comment-resolution", "code-review", "adversarial-review", "mcp", "haiku", "orchestration"],
+  "keywords": [
+    "github",
+    "pull-request",
+    "review-comments",
+    "comment-resolution",
+    "code-review",
+    "adversarial-review",
+    "mcp",
+    "haiku",
+    "orchestration"
+  ],
   "userConfig": {
     "github_pat": {
       "type": "string",

@@ -28,10 +28,10 @@ answer, just not a tab slot, since `AskUserQuestion` caps at four options):
 reviewer agents ship **no `tools:` allowlist** — they inherit the session's tools, so any
 memory MCP server present comes along without the plugin having to enumerate it — and a
 `disallowedTools` list removes `Write`/`Edit`/`MultiEdit`/`NotebookEdit` and the GitHub
-MCP server. `disallowedTools` is applied *first*, so it's the real boundary. Bash and the
-context-mode `ctx_*` tools stay reachable, because read-only git is how a reviewer
-recomputes the diff and a deny-list can't express "read-only shell" — the guard hook
-holds **both** channels to read-only inspection at runtime instead.
+MCP server. `disallowedTools` is applied *first*, so it's the real boundary.
+Bash stays reachable, because read-only git is how a reviewer recomputes
+the diff and a deny-list can't express "read-only shell" — the guard hook holds it to
+read-only inspection at runtime instead.
 
 **Memory.** If the session has memory tooling, reviewers read it before reviewing —
 mainly to find a recorded decision explaining why odd code is odd, which is the best
@@ -291,7 +291,8 @@ on the proposed wording (nothing posts mid-loop) → **one** final worker dispat
 publishes every approved comment as **a single PR review** and removes the worktree.
 
 Batching everything into ~3 worker dispatches keeps the orchestrator's context lean:
-each dispatch carries fixed harness overhead (and, under the context-mode plugin, a
+each dispatch carries fixed harness overhead (plus anything ambient hooks inject, which
+can run to a
 ~1.1k-token injected routing block), so the flow pays it three times instead of once
 per finding — and the PR gets one review event instead of N single-comment reviews.
 
