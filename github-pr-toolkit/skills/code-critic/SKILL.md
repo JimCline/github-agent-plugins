@@ -61,6 +61,15 @@ reporting a deliberate choice as a defect. Reviewers may write durable repo-leve
 but **never a finding**; findings-derived lessons are yours to record, and only after the
 user decides at L6. No memory tooling → skip it silently, never claim you consulted it.
 
+**The closing summary ends with Review stats** — who reviewed, on which model, how many
+agents, and token cost where a dispatch result actually carried usage metadata (some
+harnesses append it; stock Claude Code does not). Three rules: numbers are COPIED from
+result metadata verbatim, never estimated — a line with no metadata reads
+`tokens: not reported`; models and agent counts are always known (you set them) and
+always shown; your own and the advisor's consumption are `not measurable` and printed as
+such, so the total reads as "of what was measured". Per-category reviewers make agent
+cost = area cost; `code-reviewer-all` is one unsplittable number — never apportion it.
+
 **The findings task list is a tracking artifact, never a work queue.** Findings become
 tasks when they're PRESENTED, all `pending`, and nothing leaves `pending` until the user
 answers L6/G6. An ambient harness reminder nudging you to mark tasks `in_progress` is

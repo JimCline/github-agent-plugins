@@ -791,6 +791,46 @@ down by severity and name every unfixed **Critical/High** individually with its
 `file:line`. A Critical the user skipped is the single most important thing on the way
 out, and it is exactly what a flat count buries.
 
+### Review stats (append to the closing summary — both flows)
+
+End the summary with a short **Review stats** block: who did the work, on what model, and
+what it cost where cost is actually known. Three sourcing rules govern every line:
+
+1. **Copy, never estimate.** A token number appears here ONLY if it was carried in a
+   dispatch's result metadata (some harnesses append a usage block — e.g.
+   `subagent_tokens`, `tool_uses`, `duration_ms` — to each Agent result; stock Claude
+   Code does not). Copy such numbers verbatim as each dispatch returns. If a result
+   carried none, that line reads `tokens: not reported` — an estimated or "typical"
+   number is a fabricated one.
+2. **What you always know, say.** Model per dispatch (you set it: the Tab 4 alias, or
+   `session default` when you omitted the parameter; workers are `haiku` by frontmatter),
+   the number of agents and which, and the number of worker dispatches. These need no
+   metadata.
+3. **What you cannot know, name rather than skip.** Your own consumption and any
+   `advisor` calls are not measurable from inside the session — print them as
+   `not measurable`, so the table's total reads as "of what was measured" and not as the
+   cost of the review.
+
+Shape (adapt, don't pad — one line per agent that ran):
+
+```
+Review stats
+  Reviewers (opus): general 41.2k · security 38.9k · design 44.0k · tests 35.1k
+  Workers (haiku):  critic-worker ×2 — 9.8k
+  Advisor:          consulted ×3 — tokens not measurable
+  Orchestrator:     session model — not measurable
+  Agents: 6 (4 reviewers, 2 workers) · measured total: 169.0k tokens
+```
+
+Per-area cost falls out of the reviewer lines — one reviewer per category means the
+agent's number IS the area's number. Two cases to handle: **`code-reviewer-all`** returns
+one number that cannot be split per area — print it as one line
+(`all-categories reviewer: 88k across general+security+design`) and do not apportion it;
+and a **re-dispatch** (e.g. a G7 retry) is a second line or a `×2`, not silently summed
+into the first. When NO dispatch in the whole run carried usage metadata, collapse the
+block to the counts and models line plus one sentence: `Token usage not reported by this
+environment.` — the stats block is still worth printing for who-ran-on-what alone.
+
 ---
 
 # GITHUB PR FLOW
@@ -962,7 +1002,10 @@ and posted like any other comment and appear in this table as `[Nit]` rows, but 
 **counted on their own line** ("6 posted + 2 nits"), so a nit can never pad the finding
 count on the way out. Offer to retry any failures (one batched
 re-dispatch, then update those tasks), remove the review marker (step 0.1), and
-summarize.
+summarize — **ending with the Review stats block defined in L8**, same rules: copy
+metadata verbatim, `not reported` where a result carried none, `not measurable` for
+yourself and the advisor, and a retry dispatch shown as its own line rather than folded
+into the first.
 
 ---
 

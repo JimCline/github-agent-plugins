@@ -121,6 +121,14 @@ by severity → apply fixes, one task in progress at a time → one ask (commit 
 push / commit only / neither) → one worker dispatch commits (and pushes) → a closing
 summary by disposition.
 
+The closing summary ends with a **Review stats** block: which model each agent ran on,
+how many agents were used, and — when the environment reports it — tokens per agent,
+which for per-category reviewers is also tokens per area. Numbers are copied from
+dispatch metadata, never estimated: environments that don't report usage (stock Claude
+Code doesn't, as of v2.1.218) get `Token usage not reported by this environment` rather
+than invented figures, and the orchestrator's own and the advisor's consumption are
+listed as not measurable — so the printed total is explicitly "of what was measured".
+
 The task list is created when the findings are **presented**, and every task stays
 `pending` until you choose how to proceed — it exists to track the review, not to
 authorize it. Each task carries the severity, `file:line`, and category, and ends up
