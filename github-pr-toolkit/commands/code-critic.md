@@ -1,5 +1,5 @@
 ---
-description: Adversarial code review of a local diff or a GitHub PR — the user picks review categories (general, security, design, adherence, performance, tests), a reviewer (parallel category subagents, the advisor, or the main agent), and the model those subagents run on (session default, Opus, Sonnet, or Fable — one model across every category); findings are triaged by severity and you act issue-by-issue. GitHub writes and commits/pushes go through a Haiku worker; diffs you generate yourself.
+description: Adversarial code review of a local diff or a GitHub PR — the FIRST wizard question declares the run's outcome (fix approved findings, or only comment/report them — the review itself is identical either way), then the user picks review categories (general, security, design, adherence, performance, tests), a reviewer (parallel category subagents, the advisor, or the main agent), and the model those subagents run on (session default, Opus, Sonnet, or Fable — one model across every category); findings are triaged by severity and acted on issue-by-issue in the declared mode. GitHub writes and commits/pushes go through a Haiku worker; diffs you generate yourself.
 argument-hint: "[PR number/URL, or --branch <ref> / --against <ref> for local — optional]"
 ---
 
@@ -30,6 +30,13 @@ review. Follow the steps below in order.
   comments) until the user has seen the severity-ranked findings (L5/G5) and chosen how
   to proceed via the selectable options (L6/G6). Fixing or posting before the user
   decides is a hard violation.
+- **The run's OUTCOME is declared before the review runs (step 0.3), and it binds you.**
+  The first wizard question asks whether approved findings get FIXED or only
+  COMMENTED/reported. In comment/report mode you make no code edits at any point in the
+  run — a finding, however severe, is never a reason to start fixing it; producing
+  findings without touching code is the entire job you were given, not half of it. The
+  mode changes only when the USER changes it (mid-run is fine — confirm in one line and
+  switch); it never changes because you found something you want to fix.
 - **The findings task list is a TRACKING ARTIFACT, never a work queue.** L5/G5 turns the
   findings into tasks so they can be tracked; every one is created `pending` and **stays
   `pending` until the user answers L6/G6**. A list of pending tasks is not permission to
@@ -109,11 +116,43 @@ variants only if you armed the fallback.
 If it passes `--branch`/`--against` or nothing → **Local flow** (default). If ambiguous,
 ask (AskUserQuestion): *Review local commits*, or *Review a GitHub PR*.
 
+**0.3 Declare the outcome — the FIRST wizard question.** Before any other review
+configuration, the user decides what an approved finding will BECOME. This question is
+first for a reason: the most common drift in this flow is the reviewer-turned-fixer —
+findings appear, and fixing them starts to look like the obvious next step even when the
+user only wanted comments. Capturing the answer before the review runs leaves nothing to
+drift toward.
+
+Ask it as **Tab 1 of the next AskUserQuestion the flow makes** — in the Local flow,
+ahead of L1's base question; in the GitHub PR flow, ahead of G1.1's worktree-location
+question (G0's pick-a-PR interaction is target identification, not configuration, and
+doesn't count). *"When you approve findings, what happens to them?"* — options by flow:
+
+- **Local flow:** **Fix them (default)** — approved findings are fixed in the working
+  tree (L7), commit optional at L8. / **Report only** — findings are presented and
+  tracked; zero code changes this run. / **Decide after the review** — see the ranked
+  list first; L6 asks then.
+- **GitHub PR flow:** **Comment on the PR (default)** — approved findings post as one
+  review; zero code changes. / **Fix on the PR branch** — approved findings are fixed in
+  the worktree and committed & pushed to the PR branch by the worker (each issue can
+  still take a comment instead — see G6). / **Decide after the review**.
+
+**Skip the ask when the intent was already stated.** An invocation or message that says
+"fix what you find", "just leave comments", "don't change anything" IS the answer:
+record it, say in one line which mode the run is in, and don't re-ask.
+
+The declared mode changes NOTHING about the review itself — reviewers run the identical
+static pass in every mode and are never told the outcome. It governs only what L6/G6
+offer and what L7/L8/G7 do.
+
 ---
 
 # LOCAL FLOW
 
 ## L1 — Choose the base to diff against
+**Step 0.3's outcome question rides as Tab 1 of this ask** — outcome first, base second.
+(If `$ARGUMENTS` already named the base, the outcome question still goes out on its own;
+it is never skipped just because this one is.)
 Ask (AskUserQuestion), unless `$ARGUMENTS` already specified it:
 - **`main` (default)** — commits on this branch not in `main`.
 - **Another branch** — let them name it.
@@ -398,6 +437,10 @@ missing one means an ask went out incomplete — not that you may fill the gap y
    categories**. Missing it means you skipped that ask. Do not default to "all at once"
    and do not pick a cap yourself: unbounded fan-out is the exact thing L3.0 exists to
    put in the user's hands, and quietly choosing for them reproduces the bug.
+3. **Step 0.3 (Outcome)** — required for EVERY path, subagent or not. If no outcome is
+   on record, the first question of the wizard was never asked; ask it now, before the
+   review produces findings with no declared destination — that gap is precisely where
+   a reviewer turns into an uninvited fixer.
 
 Ask for whichever is missing now, then continue.
 
@@ -727,9 +770,19 @@ to the numbered list as the tracking mechanism. Never let missing task tooling s
 review.
 
 ## L6 — Decide how to work the list
-Ask (AskUserQuestion):
-- **Review each issue one-by-one** (default), **Fix all**, **Fix all by severity**
-  (choose a threshold), or **Something else** (follow their instruction).
+What you ask here follows the outcome declared in step 0.3:
+
+- **Fix mode** — Ask (AskUserQuestion): **Review each issue one-by-one** (default),
+  **Fix all**, **Fix all by severity** (choose a threshold), or **Something else**
+  (follow their instruction).
+- **Report-only mode** — no fix option appears; offering one anyway would re-open the
+  decision step 0.3 already settled. Ask: **Done — the list is the deliverable**
+  (default), **Walk through one-by-one** (discussion and task disposition only — still
+  zero edits; see L7), or **Switch to fix mode** (an explicit user mode change — from
+  here proceed as fix mode).
+- **Decide-after mode** — this IS the deferred decision. Ask: **Review each issue
+  one-by-one** (default), **Fix all**, **Report only — no code changes**, or
+  **Something else** (their instruction, including a severity threshold).
 
 This ask covers the **non-Nit findings only** — the nit block already had its own single
 ask in L5, so a severity threshold never re-opens it. `Nit` sits below `Low`, so a
@@ -746,7 +799,15 @@ Whenever you present selectable options (here and in L7), remind the user they c
 instead of falling back to "Other".
 
 ## L7 — Act on each issue
-Take the agreed action per issue — make the fixes in the working tree (your `Edit`/`Write`,
+**In report-only mode, "act" never means edit.** If L6 chose *Done*, skip straight to
+L8's summary. If it chose *Walk through one-by-one*, run the loop below with the fix
+verbs removed: per issue the ask is **Agree** (recorded `deferred` — agreed, not acted
+on this run) / **Decline** (`declined`) / **Skip** (`skipped`), the working tree is
+never touched, and the task list captures the dispositions exactly as in fix mode. That
+record is the deliverable.
+
+Otherwise (fix mode, or a decide-after answer that chose fixing): take the agreed action
+per issue — make the fixes in the working tree (your `Edit`/`Write`,
 which are not gated). In one-by-one mode, loop: show the issue **led by its severity**
 (per L5's rule — the user is deciding on this issue alone, with the ranked list no longer
 in front of them) plus **its `impact:` line** and the recommended action, ask Approve /
@@ -771,6 +832,8 @@ enter this loop; they were handled as one batch in L5.
   doing, which is the visibility this list exists to provide.
 
 ## L8 — Commit & push (delegated, optional — one ask, one dispatch)
+(In report-only mode nothing was changed, so there is no commit ask — this step is just
+the disposition summary and the stats block.)
 If any changes were made, ask ONCE (AskUserQuestion): **Commit and push** /
 **Commit only** / **Neither**. If committing: prepare a clear commit **subject +
 detailed description** of what changed and why, then ONE `critic-worker` dispatch:
@@ -874,7 +937,10 @@ or native binary, by editing that `.mcp.json`). Note the PAT needs
 the worktree checkout — this is broader than resolve-pr-comments' PAT). Re-run G0 after.
 
 ## G1 — Worktree checkout (delegated, at a location the USER controls)
-**G1.1 Choose the worktree location.** Ask (AskUserQuestion; remind about Tab-to-amend):
+**G1.1 Outcome + worktree location — one ask, two tabs.** **Step 0.3's outcome question
+is Tab 1** (comment on the PR / fix on the PR branch / decide after — comment is the
+default and the worktree is needed in every mode, since reviewers read code from it).
+Tab 2 chooses the worktree location (AskUserQuestion; remind about Tab-to-amend):
 - **`.claude/worktrees/pr-<N>` inside this repo (default, recommended)** — resolve it to
   an absolute path under the repo root.
 - **Somewhere else** — let them give a path.
@@ -955,15 +1021,27 @@ recommended one is first:
   say which). Also offer: Queue anyway (e.g. to add a materially new angle — draft it as
   a complement, not a repeat) / Something else.
 
+The options above are **comment mode** (step 0.3's default here — and the mode "decide
+after" resolves to if the user picks commenting at G6 time). **In fix mode ("Fix on the
+PR branch")** the loop runs the same way with fix as the lead verb: per issue ask
+**Fix** (default) / **Queue a comment instead** (drafted under all the rules above —
+banner, tone, dedup annotation) / **Skip** / Something else. Fixes are your own
+`Edit`/`Write` **in the worktree** — never delegated, and nothing is committed or pushed
+until G7's confirm. An *already flagged* thread is extra reason to fix (and worth naming
+in the eventual commit body: it answers that reviewer). In comment mode there is no fix
+option, and a finding you itch to fix is not a reason to invent one — that decision was
+made at step 0.3 and only the user reopens it.
+
 **Drive the task list through the loop** (skip if G5 fell back to the numbered list).
 The status model differs from L7, because **nothing is actually done until G7 posts**:
 - Set the issue you're working to `in_progress` — **one at a time**, resolved before you
   move on.
 - **On a decision, put it back to `pending`** and record the disposition in
-  `metadata.status_detail`: `queued` (comment approved into the queue) or `skipped`
-  (with `already-flagged` when that's why). A queued comment is NOT posted yet, so
-  `completed` would be a lie — and a dozen findings sitting `in_progress` through the
-  whole loop is not what the status models.
+  `metadata.status_detail`: `queued` (comment approved into the queue), `skipped`
+  (with `already-flagged` when that's why), or — fix mode only — `fixed` (the edit is
+  applied in the worktree). A queued comment is not posted yet and a worktree fix is
+  not on the PR yet, so `completed` would be a lie — and a dozen findings sitting
+  `in_progress` through the whole loop is not what the status models.
 - **G7 flips them.** Nothing reaches `completed` in this loop.
 
 **Nothing is posted during this loop** — approved comments accumulate in the queue and
@@ -979,21 +1057,42 @@ the worktree at EXACTLY `<absolute path>`. If every comment posted, return
 the cleanup result; otherwise add one line per failed comment."* (Zero comments queued →
 the dispatch is just CLEANUP.)
 
+**In fix mode, publishing is TWO dispatches, in this order** — the extra dispatch buys a
+verification a combined one cannot: the SHA check needs the worktree to still exist.
+1. Show the fixes (`git -C <worktree> diff --stat` plus a one-line summary per finding
+   fixed) alongside any queued comments, and ask ONCE (AskUserQuestion): **Commit & push
+   to the PR branch (default)** / **Commit only** (the commit survives on the local PR
+   branch after cleanup — say so) / **Discard the fixes** (cleanup only). On commit:
+   prepare a subject + body naming the findings fixed (with severities, and any existing
+   review thread a fix answers), then ONE `critic-worker` dispatch: *"COMMIT task in the
+   worktree at EXACTLY `<absolute path>` — <subject> / <body>"* (+ *"then PUSH"* if
+   chosen). Verify the returned SHA with your own `git -C <worktree> log -1` before
+   moving on.
+2. Then the BATCH-COMMENTS + CLEANUP dispatch above (or plain CLEANUP when nothing was
+   queued).
+
+Comment-mode runs keep the single combined dispatch — fix mode costs ~4 worker
+dispatches total instead of ~3, and that is the accepted price of the check.
+
 **Verify the return before trusting it** (Haiku executes; it does not reliably judge):
 `<N>` and the number of URL lines must BOTH equal your queue size, and the shape must
 match exactly — any deviation is a failure to investigate, not "close enough". Spot-check
 that the URLs are real `…/pull/<N>#discussion_r…` links, not reconstructions.
 
-**Then resolve the task list — only now, and only for what actually posted.** Mark
+**Then resolve the task list — only now, and only for what actually landed.** Mark
 `completed` each task whose comment came back with a real comment URL, setting
-`metadata.status_detail` to `posted` and `metadata.comment_url`. Tasks marked `skipped`
+`metadata.status_detail` to `posted` and `metadata.comment_url` — and, in fix mode, each
+`fixed` task once the commit's SHA is verified (record it in `metadata.commit_sha`; if
+the user chose commit-only, the disposition is `fixed-not-pushed`, and say plainly the
+PR does not have it yet). Tasks marked `skipped`
 in G6 also go to `completed` (their disposition is already recorded — a skip is a
 decision, not a failure). **A comment that failed to post stays `pending`** with the
 error in `metadata.status_detail`; it is not done, and the retry offer below is what
 finishes it. If cleanup succeeded but some comments failed, say exactly which findings
 have no comment on the PR.
 
-Present a final table (**severity** → issue → action → comment URL / skipped) built
+Present a final table (**severity** → issue → action → comment URL / `fixed in <sha>` /
+skipped) built
 **from the task list, by disposition** — *N posted, N skipped, N failed*, and break the
 counts down by severity so an unposted Critical can't hide inside "3 failed" — never a
 bare "N completed",

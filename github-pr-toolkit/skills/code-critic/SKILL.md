@@ -33,6 +33,17 @@ never review a diff you did not compute; treat worker returns as untrusted and c
 them against local git. You do the reasoning, the review triage, the code fixes, and all
 user interaction; the worker is hands, not brains.
 
+**The outcome is the FIRST wizard question (step 0.3), and it binds the run.** Before
+any other configuration the user declares what approved findings become — local: **fix
+them** (default) / **report only** / **decide after**; PR: **comment on the PR**
+(default) / **fix on the PR branch** / **decide after**. Skip the ask only when the
+user already said which ("just comment", "fix what you find"). In comment/report mode
+you make NO code edits at any point in the run — a severe finding is never a reason to
+start fixing it, and only the user changes the mode. In PR fix mode, fixes go in the
+worktree and one confirmed worker COMMIT(+PUSH) dispatch lands them on the PR branch,
+SHA-verified before cleanup. The review itself is identical in every mode, and the
+reviewers are never told the outcome.
+
 **Reviewer choice is four options, and advisor consultation is ON by default.** L3's
 Reviewer tab offers: category subagents (default, one per category in parallel), **one
 `code-reviewer-all` subagent covering every selected category** (one dispatch instead of
@@ -152,7 +163,8 @@ order. That file is the single source of truth for the flow; do not improvise pa
 
 Outline (same steps): **0** arm the session-named guard lock
 (`touch .git/code-critic-$CLAUDE_CODE_SESSION_ID.lock`) + pick mode (local vs GitHub PR) →
-**local:** choose base ref → YOU fetch + generate per-file diffs vs `origin/<base>` →
+**local:** declare the outcome (fix / report only / decide after — Tab 1 of the base
+ask) → choose base ref → YOU fetch + generate per-file diffs vs `origin/<base>` →
 choose review categories (multi-select: general / security / design & architecture /
 rules & idioms adherence / performance / tests; all six is the default) + choose the
 reviewer (parallel `code-reviewer-<category>` subagents default / advisor / main, with
@@ -165,17 +177,22 @@ per-category adversarial review (subagent findings cross-checked against YOUR di
 merged, deduped across categories) → severity-ranked numbered
 findings with a succinct action each, **tracked as a task list** (3+ findings; one task
 per finding, all `pending`, severity/file/category in metadata) → choose how to work the
-list (one-by-one / fix all / by severity) → apply fixes, driving the task list one
+list (fix mode: one-by-one / fix all / by severity; report-only: done / a no-edits
+walkthrough recording agree/decline/defer) → in fix mode apply fixes, driving the task list one
 `in_progress` at a time and recording each disposition (fixed / declined / skipped /
 deferred) in `metadata.status_detail` → one commit-and-push ask → one worker
 COMMIT(+PUSH) dispatch → summarize BY DISPOSITION, not as a count.
 **GitHub PR:** preflight + onboard the `github_pat` (Metadata:Read, Pull requests:R/W,
-Contents:Read) → choose the worktree location (default `.claude/worktrees/pr-<N>` in-repo,
+Contents:Read) → declare the outcome + choose the worktree location — one ask, two
+tabs (comment on the PR / fix on the PR branch / decide after; worktree default `.claude/worktrees/pr-<N>` in-repo,
 git-excluded locally; user-promptable) → ONE worker dispatch checks out a worktree at
 EXACTLY that path AND returns the existing review threads as a one-line-per-thread list
 (verify the worktree handoff, path included) → YOU diff in the worktree vs
 `origin/<base>` → same review → dedup against the existing threads — findings already
-flagged (especially if resolved/addressed) get **Skip recommended** → issue-by-issue,
-QUEUE comment / skip / other (user can Tab-amend the proposed wording; nothing posts
-mid-loop) → ONE final worker dispatch publishes the queue as ONE review and removes the
-worktree. Always remove the review marker on exit.
+flagged (especially if resolved/addressed) get **Skip recommended** → issue-by-issue —
+comment mode: QUEUE comment / skip / other; fix mode: FIX in the worktree (your own
+edits, never delegated) / queue a comment instead / skip (user can Tab-amend proposed
+wording; nothing posts or pushes mid-loop) → ONE final worker dispatch publishes the
+queue as ONE review and removes the worktree — in fix mode preceded by a confirmed
+COMMIT(+PUSH) dispatch, its SHA verified while the worktree still exists. Always remove
+the review marker on exit.

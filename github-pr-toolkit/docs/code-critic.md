@@ -101,7 +101,10 @@ Or just ask in natural language ("review my local changes", "critique PR 1234") 
 
 ### Flow
 
-**Local:** pick a base → orchestrator fetches and generates per-file diffs vs
+**Local:** declare the **outcome** — the first question of every run: fix approved
+findings (default), report only (zero code changes), or decide after the review; it
+rides as Tab 1 of the base ask, and is skipped only when you already said which you
+want → pick a base → orchestrator fetches and generates per-file diffs vs
 `origin/<base>` → pick the **review categories** (multi-select: General, Security,
 Design & Architecture, Rules & Idioms Adherence, Performance & Efficiency, Test
 Quality & Coverage — all six is the default) and the **reviewer** (parallel
@@ -116,10 +119,19 @@ concurrence or dissent) → per-category adversarial review — subagent
 findings are cross-checked against the orchestrator's own diff, then merged and
 deduped across categories → severity-ranked findings, each with an **impact line** and a
 succinct action (nits batched separately; a clean review ends here and says so), and
-(at 3+ findings) **turned into a tracked task list** → choose one-by-one / fix all / fix
-by severity → apply fixes, one task in progress at a time → one ask (commit and
-push / commit only / neither) → one worker dispatch commits (and pushes) → a closing
-summary by disposition.
+(at 3+ findings) **turned into a tracked task list** → then, in fix mode, choose
+one-by-one / fix all / fix by severity → apply fixes, one task in progress at a time →
+one ask (commit and push / commit only / neither) → one worker dispatch commits (and
+pushes) → a closing summary by disposition. **Report-only runs offer no fix option**:
+the ranked list is the deliverable, with an optional no-edits walkthrough that records
+agree / decline / defer dispositions — switching to fixing takes an explicit mode
+change from you, never a finding the orchestrator wants to act on.
+
+**PR mode asks the same first question** with PR-shaped answers: **comment on the PR**
+(default — approved findings post as one review, zero code changes) or **fix on the PR
+branch** — fixes land in the checked-out worktree and one confirmed worker dispatch
+commits & pushes them to the PR branch, SHA-verified before the worktree is cleaned up;
+each issue can still take a comment instead.
 
 The closing summary ends with a **Review stats** block: which model each agent ran on,
 how many agents were used, and — when the environment reports it — tokens per agent,
