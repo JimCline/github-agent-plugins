@@ -207,20 +207,38 @@ a repo-wide audit.
 **Tab 3 — "Reviewer".** *"Who performs the review?"* This tab carries the advisor
 choice too — second opinions used to be their own tab, and folding them in here is what
 frees the fourth slot for the model.
-- **Category subagents, consulting the advisor (default)** — one
-  `code-reviewer-<category>` subagent per selected category, run in parallel, each
-  taking borderline and high-severity findings to the advisor before finalizing.
-- **Category subagents, working independently** — the same fan-out, no second
-  opinions; findings stand on the reviewers' own reasoning.
+**This tab is reviewer IDENTITY — exactly four options, which is the cap.** Advisor
+consultation is no longer one of them: it is **ON by default** for whichever reviewer is
+chosen. That packing is deliberate — `AskUserQuestion` allows at most 4 options, and
+spending two of them on the same reviewer with consultation toggled left no room for the
+single-subagent path. Do not add a fifth option; the ask silently breaks.
+
+- **Category subagents (default)** — one `code-reviewer-<category>` subagent per
+  selected category, run in parallel. The default fan-out, and the strongest review:
+  each lens reaches its verdict independently and cannot be coloured by the others.
+- **One subagent, all categories** — a single `code-reviewer-all` dispatch holding every
+  selected lens. One dispatch instead of six, and it can see interactions across lenses
+  that a single-lens reviewer structurally cannot. **State the tradeoff in one line when
+  you offer it, and again if they pick it:** the fan-out's value is six verdicts that
+  cannot contaminate each other, and this gives that up — one reasoner's read of
+  `security` is coloured by what it just concluded about `design`. Cheaper and quieter;
+  a weaker review.
 - **The advisor** — hand the diffs to the `advisor` tool for one independent pass
   covering the selected categories.
-- **The main agent (you)** — you perform the adversarial review yourself, consulting
-  the advisor on borderline and high-severity findings.
+- **The main agent (you)** — you perform the adversarial review yourself.
 
-*If no advisor is available this session*, say so in one line and offer the two
-non-advisor paths (subagents working independently, or you reviewing alone) instead of
-the four above. If the user wants the main agent to review WITHOUT advisor consultation,
-that's an **Other** answer — honor it.
+**Advisor consultation is ON by default** for every path that can use it (both subagent
+paths and the main agent; "the advisor" IS the advisor). Reviewers take borderline and
+high-severity findings to the advisor before finalizing — ONE consolidated ask, not one
+call per finding. **"Have them work independently" is a first-class Other answer**, not a
+fallback: if the user asks for it in any form — before the ask, in the Other box, or
+after seeing the option — honor it and dispatch with `advisor: none`. Say in one line
+that consultation is on by default and can be turned off, so the option is discoverable
+without a tab slot.
+
+*If no advisor is available this session*, say so in one line and dispatch every path
+with `advisor: none` — all four reviewers still work, they just stand on their own
+reasoning. Do not drop options or re-ask.
 
 **Tab 4 — "Reviewer model".** *"Which model should the review subagents run on? One
 model runs every selected category."* Always present this tab. It governs the subagent
@@ -334,11 +352,35 @@ but that would be serious if true stays in the list, marked uncertain (L4's open
 rule) — state its impact conditionally: what goes wrong *if it is real*. A finding you
 are certain about that breaks nothing is the one to drop.
 
-**STOP — checkpoint before any subagent dispatch.** If category subagents were chosen
-and you have **no answer from L3's Tab 4 (Reviewer model)**, you sent that ask without
-its fourth tab. Do not guess a model and do not dispatch: ask for the model now, then
-continue. Dispatching reviewers on a model the user was never offered is a violation of
-L3, not a shortcut.
+**STOP — checkpoint before ANY subagent dispatch.** If a subagent path was chosen —
+**either the per-category fan-out or the single `code-reviewer-all` agent** — and you
+have **no answer from L3's Tab 4 (Reviewer model)**, you sent that ask without its fourth
+tab. Do not guess a model and do not dispatch: ask for the model now, then continue.
+Dispatching reviewers on a model the user was never offered is a violation of L3, not a
+shortcut. One subagent is still a subagent dispatch; a single agent does not exempt this.
+
+**If ONE subagent for all categories was chosen:** dispatch a single
+`code-reviewer-all` agent. Everything about the dispatch matches the fan-out below —
+same absolute path, same base spec, same changed-file list, same `advisor:` line, same
+Tab 4 `model` parameter (omit it only for **Default**) — with two additions:
+- **The category list, each slug WITH its focus.** The agent holds the built-in lenses,
+  but it must be told which ones the user selected, and a **custom** category's focus
+  exists only in its own file — `Read` it and pass the checklist text inline. Without
+  that text the agent will guess from the slug, so a custom category with no focus
+  passed is a custom category not really reviewed.
+- **For the adherence category**, the directive files found (or the infer/user-guidance
+  outcome) from L3, exactly as the fan-out passes it.
+
+It returns a **roll-call** — one line per category the dispatch named — plus findings
+each tagged `category:`. **Check the roll-call against the categories you sent.** A
+category missing from the roll-call was not reviewed, whatever the findings suggest: say
+so to the user rather than reporting the review as complete. `not-reviewed` with a reason
+is an honest answer; a silently absent lens is not. Then apply the same provenance
+cross-check below to every finding.
+
+Do not fan out as well. One subagent means one dispatch — if you also dispatch per
+category "to be thorough", you have overridden the user's choice and doubled the cost of
+the thing they picked to make cheaper.
 
 **If category subagents were chosen:** dispatch ONE `code-reviewer-<category>` agent per
 selected category (the built-ins — general / security / design / adherence /
@@ -372,9 +414,10 @@ location.** Two tests, and a finding must pass both:
 Checking (1) alone is what lets pre-existing code through, since context lines live
 inside hunks. You remain responsible for the merged result.
 
-**A category that returns `findings: none` is finished.** Do not re-dispatch it, do not
-nudge it to look harder, and do not go hunting in its lane yourself. An empty category is
-a result — report it as reviewed and clean.
+**A category that returns `findings: none` is finished** — whether that came from its own
+subagent or from a `none` line in the all-category agent's roll-call. Do not re-dispatch
+it, do not nudge it to look harder, and do not go hunting in its lane yourself. An empty
+category is a result — report it as reviewed and clean.
 
 **If the advisor or you review:** run one adversarial pass restricted to the union of
 the selected categories' checklists (built-ins as itemized in L3; for a custom
@@ -384,9 +427,27 @@ no subagent return to cross-check, so the discipline has to hold as you review: 
 writing a finding, name which changed line puts it in scope. If delegating to the
 advisor, tell it the same — static review, scoped to the change, **held to the
 WORTH-REPORTING bar above** (impact line included), surface uncertainty, do not execute
-anything. If YOU review and Tab 3 chose consultation, take your borderline
-and high-severity findings to the advisor before finalizing and record its
-concurrence/dissent per finding.
+anything. If YOU review, consultation is ON unless the user turned it off (or no advisor
+exists): take your borderline and high-severity findings to the advisor before finalizing
+and record its concurrence/dissent per finding.
+
+**Memory, on every review path.** If this session has memory/knowledge tooling — an MCP
+memory server, a project memory store, a notes tool; whatever is present — **read it
+before reviewing** and let it inform the pass: conventions this repo actually follows,
+areas known to be fragile, and above all a recorded decision that explains why odd code
+is odd, which is the single best defence against reporting a deliberate choice as a
+defect. The reviewer subagents do this themselves (it is in their definitions); on the
+advisor and main-agent paths it is YOUR job, since there is no subagent to do it.
+
+**You are the only one who writes findings-derived memory, and only after L6.** The
+reviewers are told never to write a finding to memory, for a reason that applies doubly
+to you: at L4 a finding has not been through dedup, the impact filter, or the user's
+decision. Once the user has chosen how to proceed, a durable lesson worth recording is
+fair game — a convention this review established, a fragile area confirmed, a recurring
+pattern. **Never write the finding list itself**, never write anything the user rejected
+as not-a-problem, and if you have no memory tooling, skip this silently. A memory is
+recalled as established fact by every later review, so the bar is "still true next
+month", not "true about this diff".
 
 Either way: produce concrete findings, each tied to a file + line, tagged with its
 category, and carrying its `scope:`.
@@ -394,7 +455,8 @@ category, and carrying its `scope:`.
 ## L5 — Triage into a severity-ranked list, and track it as tasks
 You (main) merge the findings — when category subagents ran, first **dedup across
 categories** (the same defect often surfaces under two lenses; keep one entry, note both
-category tags) — into a **numbered list ordered by severity/concern**
+category tags; the all-category agent is told to file a cross-lens defect once, but check
+rather than trust it) — into a **numbered list ordered by severity/concern**
 (Critical → High → Medium → Low → Nit). Each item: its **severity**, a one-line
 problem statement, the `file:line`, its **`impact:` line**, the category tag(s), and a
 **succinct recommended action**.

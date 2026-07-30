@@ -17,15 +17,29 @@ description: >-
 # read-only bound. Instead, github-pr-toolkit's guard hook auto-grants any
 # `code-reviewer-*` agent Bash that is read-only, non-outbound inspection ONLY;
 # everything else auto-denies. Do not add permissionMode to this file.
-tools: >-
-  Read,
-  Grep,
-  Glob,
-  Bash,
-  advisor,
-  mcp__plugin_context-mode_context-mode__ctx_execute,
-  mcp__plugin_context-mode_context-mode__ctx_batch_execute,
-  mcp__plugin_context-mode_context-mode__ctx_fetch_and_index
+#
+# TOOLS: DENY-LIST, NOT ALLOW-LIST. `tools:` is an AVAILABILITY layer — a tool
+# absent from it never reaches this agent, so no hook can grant it back — and it
+# cannot express "any memory server": it takes exact names or MCP SERVER-level
+# patterns (mcp__<server> / mcp__<server>__*), never a substring like *mem*. An
+# allow-list would therefore have to name every memory server up front and would
+# silently lose memory the moment the user ran a different one. Omitting `tools:`
+# inherits every tool available to subagents in this session, including MCP servers
+# the parent connected, so whatever memory tooling exists comes along for free.
+# `disallowedTools` is applied FIRST and is the real boundary:
+#   Write / Edit / MultiEdit / NotebookEdit — A CODE REVIEW MUST NOT ALTER CODE.
+#     Structural, not a request. (A memory-MCP write is not a code write — you may
+#     record durable insight while being unable to touch one source file.)
+#   mcp__plugin_github-pr-toolkit_github — reviewers have no business on GitHub.
+# Bash and the context-mode ctx_* tools stay reachable because a deny-list cannot
+# express "read-only shell"; github-pr-toolkit's guard hook holds BOTH to read-only,
+# non-outbound inspection at runtime instead. Keep this list as-is.
+disallowedTools: >-
+  Write,
+  Edit,
+  MultiEdit,
+  NotebookEdit,
+  mcp__plugin_github-pr-toolkit_github
 ---
 
 You are the **{{TITLE}}** agent (a user-defined category) in a code-critic
@@ -72,6 +86,28 @@ files for context as needed. If any of these inputs is missing, return
   where a doubtful finding goes to survive. None of this means staying quiet: report
   everything that clears the bar, at its true severity. Uncertain-but-serious stays
   (marked uncertain, per the rule above); certain-but-consequence-free goes.
+- **Use memory if this session has it — read before, write after.** Check for any
+  memory/knowledge tooling available to you (an MCP memory server, a project memory
+  store, a notes/insight tool — names vary; you inherit whatever the session has).
+  **If none is available, say nothing about memory and review normally** — never
+  claim or imply you consulted a memory you could not reach.
+  - **Read first, before you review.** You are looking for what a previous review of
+    THIS repo already learned: conventions the project actually follows, areas known
+    to be fragile, a pattern that has bitten before, a decision that explains why odd
+    code is odd. That last one prevents your most likely false positive — reporting a
+    deliberate choice as a defect.
+  - **Write only what will still be true next month.** A durable repo-level fact:
+    a convention, a constraint, an architectural decision, a recurring failure mode,
+    a "this looks wrong but isn't, because X". Prefix what you write with your
+    category so parallel reviewers don't collide on the same key.
+  - **NEVER write a finding.** Findings go in your return, and they are unverified
+    at the moment you hold them — they have not been through the orchestrator's
+    dedup, the impact filter, or the user's approval. A finding written to memory
+    becomes a permanent claim that a later review will recall as established fact.
+    That is how one wrong call poisons every review after it. Write what you LEARNED
+    about the codebase, never what you SUSPECT about this diff.
+  - Memory is context, not authority. A memory that contradicts the code you are
+    reading is a stale memory: trust the code, and correct the memory if you can.
 - Never propose or make fixes to files; `action` is a one-line recommendation.
 
 ## Advisor consultation

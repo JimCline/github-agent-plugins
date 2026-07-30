@@ -94,6 +94,9 @@ const WRAPPER_HEADS = new Set([
   'command', 'nohup', 'time', 'timeout', 'sudo', 'doas', 'script', 'nice',
 ]);
 
+// tool_input keys whose string value is a SHELL COMMAND (see commandLeaves).
+const COMMAND_KEYS = /^(code|command|cmd|script|shell|input|args)$/i;
+
 function readInput() {
   try {
     return JSON.parse(readFileSync(0, 'utf8') || '{}');
@@ -118,9 +121,16 @@ const cmd = (input.tool_input && input.tool_input.command) || '';
 
 const isToolkitMcp = /^mcp__plugin_github-pr-toolkit_github__/.test(tool);
 
+// Declared HERE, above the subagent branch, because both the reviewer ctx_* gate
+// and the main-agent gh gate need it — and a `const` referenced before its line
+// throws (see the placement note above MAX_AGE_MS).
+const isCtxExec = /ctx_(execute|batch_execute)$/.test(tool);
+
 // Subagents (they carry agent_id) are the delegates. For THIS PLUGIN'S workers,
 // actively GRANT the GitHub MCP tools — plugin agents' `permissionMode:
-// bypassPermissions` frontmatter is not honored (observed on 2.1.206), so
+// bypassPermissions` frontmatter is not supported in plugin-shipped agents (documented
+// and deliberate — "for security reasons, hooks, mcpServers, and permissionMode are not
+// supported for plugin-shipped agents", plugins-reference; first hit here on 2.1.206), so
 // without this grant a non-interactive worker's calls auto-deny. Any other
 // subagent falls through to the normal permission flow.
 if (input.agent_id) {
@@ -162,6 +172,44 @@ if (input.agent_id) {
           permissionDecision: 'allow',
           permissionDecisionReason:
             'github-pr-toolkit review subagent — read-only inspection Bash for the static review pass',
+        },
+      })
+    );
+    process.exit(0);
+  }
+
+  // A reviewer's SHELL must be read-only whichever tool carries it. `ctx_execute`
+  // takes its command in `code`, so the Bash grant above never inspects it — and
+  // the reviewer agents no longer pin a `tools:` allowlist (they inherit the
+  // session's tools so any memory MCP server comes along), which makes this path
+  // ordinarily reachable rather than theoretical. Without this branch,
+  // `ctx_execute(code: "echo x > src/app.ts")` is a review that edits code, which
+  // is the one thing a code review must never do.
+  //
+  // DENY here rather than fall through: falling through auto-denies a
+  // non-interactive subagent anyway, but silently, so the reviewer would retry
+  // the same call and burn its turn. An explicit reason tells it to use Bash.
+  if (reviewer && isCtxExec) {
+    const leaves = commandLeaves(input.tool_input);
+    if (!leaves.every((s) => isReviewerSafeBash(s))) {
+      process.stderr.write(
+        'code-critic review guard: this review is a STATIC pass — it reads code and ' +
+          'never alters it. That holds for every shell channel, so a ctx_* payload is ' +
+          'held to the same read-only standard as Bash: no writes, no redirection, no ' +
+          '`sed -i`, no outbound git or `gh`, no test/build execution. Inspect with ' +
+          'Read/Grep/Glob or read-only git via the Bash tool instead. If confirming a ' +
+          'finding genuinely needs to run something, say so IN the finding (mark it ' +
+          'uncertain and name what would confirm it) — the orchestrator asks the user.'
+      );
+      process.exit(2);
+    }
+    process.stdout.write(
+      JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'allow',
+          permissionDecisionReason:
+            'github-pr-toolkit review subagent — ctx_* payload is read-only inspection only',
         },
       })
     );
@@ -209,7 +257,6 @@ if (isGithubMcp) {
 // The blob is scanned rather than parsed, because the argument shape belongs to
 // another plugin and may change. Erring toward denial is right here: a false
 // block costs one retry through Bash, where the precise tokenizer applies.
-const isCtxExec = /ctx_(execute|batch_execute)$/.test(tool);
 const ctxBlocked =
   isCtxExec &&
   stringLeaves(input.tool_input).some((s) => ghTextBlocked(s));
@@ -342,6 +389,44 @@ function stringLeaves(value, out = []) {
   else if (value && typeof value === 'object')
     for (const v of Object.values(value)) stringLeaves(v, out);
   return out;
+}
+
+// The subset of string leaves that are actually SHELL COMMANDS, by key name.
+// stringLeaves() is right for the gh scan (scanning a stray `language: "bash"` for
+// `gh` is harmless), but wrong for a read-only check: `isReviewerSafeBash("bash")`
+// is false, so feeding it every leaf would refuse every ctx_* call including plain
+// reads. Keys are matched rather than values because a command is not
+// distinguishable from prose by inspection.
+//
+// FAIL-CLOSED: if no key matches but strings are present, return ALL of them. An
+// unrecognized payload shape then reads as "all command", so a renamed field in
+// another plugin's contract cannot quietly turn the check off — it makes it
+// stricter instead, and the reviewer's fallback is the Bash tool.
+function commandLeaves(toolInput) {
+  const out = [];
+  collectCommands(toolInput, out);
+  // Fail-closed, and ONLY at the top level: no recognized command key anywhere
+  // means the shape is unrecognized, so treat every string as a command.
+  if (out.length) return out;
+  return stringLeaves(toolInput);
+}
+
+function collectCommands(value, out) {
+  if (Array.isArray(value)) {
+    for (const v of value) collectCommands(v, out);
+  } else if (value && typeof value === 'object') {
+    for (const [k, v] of Object.entries(value)) {
+      // stringLeaves, not push: a command key may hold a STRING (`code: "…"`) or
+      // an ARRAY of them (`args: ["rm", "-rf"]`). Pushing only strings would let
+      // an argv-style payload through unchecked.
+      if (COMMAND_KEYS.test(k)) stringLeaves(v, out);
+      else collectCommands(v, out);
+    }
+  }
+  // A string under a NON-command key is deliberately not collected. ctx_execute
+  // runs what is in `code`; a string parked under `note` or `extra.nested` is not
+  // executed, so treating it as a command would refuse ordinary reads for no
+  // safety gain. The renamed-field case is what the fail-closed fallback covers.
 }
 
 function isGhBlocked(command) {

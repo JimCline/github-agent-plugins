@@ -346,7 +346,14 @@ would hide during a static review); re-issue without the wrapper.
   Bash ONLY when every command segment is read-only inspection** and nothing
   outbound (`gh` / `git push|commit|worktree|pull`) rides along; anything else falls
   through and auto-denies, which enforces their static-review contract by
-  construction. They are never granted the GitHub MCP tools.
+  construction. They are never granted the GitHub MCP tools. **The same read-only
+  standard is applied to their `ctx_*` payloads**, because a review that edits code
+  through a second shell channel is still a review that edits code — the reviewer
+  agents ship no `tools:` allowlist (so any memory MCP server the session has comes
+  along without enumeration), which makes that channel ordinarily reachable rather
+  than theoretical. Their `disallowedTools` removes `Write`/`Edit`/`MultiEdit`/
+  `NotebookEdit` outright; shells can't be denied that way without costing them
+  read-only git, so the hook gates them at runtime.
 - **Any other subagent → normal permission flow** (prompt/rules decide). The resolve
   flow's `thread-assessor` lands here by design: it matches neither grant above, so it
   is shipped with **no Bash at all** (`Read`/`Grep`/`Glob` + `advisor` only, none of

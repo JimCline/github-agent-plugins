@@ -125,6 +125,36 @@ touch "$SANDBOX/.git/code-critic-S1.lock"
 touch "$SANDBOX/.git/code-critic-S1.assessing"
 check 0 'critic-worker ctx git commit ARMED' "{\"tool_name\":\"mcp__plugin_context-mode_context-mode__ctx_execute\",\"tool_input\":{\"language\":\"bash\",\"code\":\"git commit -m x\"},\"agent_id\":\"a4\",\"agent_type\":\"critic-worker\",\"cwd\":\"$SANDBOX\",\"session_id\":\"S1\"}"
 check 0 'reviewer ctx read ASSESSING'        "{\"tool_name\":\"mcp__plugin_context-mode_context-mode__ctx_execute\",\"tool_input\":{\"language\":\"bash\",\"code\":\"git diff\"},\"agent_id\":\"a5\",\"agent_type\":\"code-reviewer-general\",\"cwd\":\"$SANDBOX\",\"session_id\":\"S1\"}"
+
+# A CODE REVIEW MUST NOT ALTER CODE — and that has to hold for every shell channel,
+# not just Bash. Reviewers no longer pin a `tools:` allowlist (they inherit the
+# session's tools so any memory MCP comes along), which makes ctx_* ordinarily
+# reachable rather than theoretical.
+rev() { printf '{"tool_name":"mcp__plugin_context-mode_context-mode__ctx_execute","tool_input":{"language":"bash","code":%s},"agent_id":"r1","agent_type":"%s","cwd":"%s"}' "$1" "${2:-code-reviewer-general}" "$SANDBOX"; }
+echo "=== reviewer ctx_* payloads held to read-only (a review never edits code) ==="
+check 2 'reviewer ctx redirect to file'  "$(rev '"echo x > src/app.ts"')"
+check 2 'reviewer ctx append to file'    "$(rev '"echo x >> src/app.ts"')"
+check 2 'reviewer ctx sed -i'            "$(rev '"sed -i s/a/b/ src/app.ts"')"
+check 2 'reviewer ctx rm'                "$(rev '"rm -rf src"')"
+check 2 'reviewer ctx npm test'          "$(rev '"npm test"')"
+check 2 'reviewer ctx git push'          "$(rev '"git push origin main"')"
+check 2 'reviewer ctx gh pr create'      "$(rev '"gh pr create"')"
+check 0 'reviewer ctx git diff'          "$(rev '"git diff origin/main"')"
+check 0 'reviewer ctx grep'              "$(rev '"grep -rn TODO src | head -20"')"
+check 2 'code-reviewer-all ctx write'    "$(rev '"echo x > src/app.ts"' 'code-reviewer-all')"
+check 0 'code-reviewer-all ctx read'     "$(rev '"git diff origin/main"' 'code-reviewer-all')"
+check 0 'reviewer Bash read still ok'    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git log -5\"},\"agent_id\":\"r2\",\"agent_type\":\"code-reviewer-all\",\"cwd\":\"$SANDBOX\"}"
+# commandLeaves is FAIL-CLOSED: a payload shape with no recognized command key
+# reads as all-command, so another plugin renaming its field makes the check
+# stricter rather than silently switching it off.
+check 2 'reviewer ctx unknown shape'     "{\"tool_name\":\"mcp__plugin_context-mode_context-mode__ctx_execute\",\"tool_input\":{\"language\":\"bash\",\"payload\":{\"deep\":\"rm -rf src\"}},\"agent_id\":\"r3\",\"agent_type\":\"code-reviewer-general\",\"cwd\":\"$SANDBOX\"}"
+# argv-style: a command key holding an ARRAY must be checked, not skipped.
+check 2 'reviewer ctx args array'        "{\"tool_name\":\"mcp__plugin_context-mode_context-mode__ctx_execute\",\"tool_input\":{\"args\":[\"rm -rf src\"]},\"agent_id\":\"r4\",\"agent_type\":\"code-reviewer-general\",\"cwd\":\"$SANDBOX\"}"
+# Mixed shape: `code` is recognized, so the fallback correctly does NOT fire and
+# the string under `extra.nested` is not treated as a command. That is deliberate
+# — ctx_execute runs `code`; an unexecuted string is not a mutation risk, and
+# treating it as one would refuse ordinary reads. Asserted so the choice is visible.
+check 0 'reviewer ctx mixed shape read'  "{\"tool_name\":\"mcp__plugin_context-mode_context-mode__ctx_execute\",\"tool_input\":{\"code\":\"git diff\",\"extra\":{\"nested\":\"rm -rf src\"}},\"agent_id\":\"r5\",\"agent_type\":\"code-reviewer-general\",\"cwd\":\"$SANDBOX\"}"
 check 2 'MAIN agent ctx still closed ARMED'  "{\"tool_name\":\"mcp__plugin_context-mode_context-mode__ctx_execute\",\"tool_input\":{\"language\":\"bash\",\"code\":\"git commit -m x\"},\"cwd\":\"$SANDBOX\",\"session_id\":\"S1\"}"
 
 # Documented limitation, asserted so it cannot drift silently: the assessing gate
@@ -135,6 +165,32 @@ check 2 'MAIN agent ctx still closed ARMED'  "{\"tool_name\":\"mcp__plugin_conte
 # without the wrapper, so it stays as-is rather than growing a second scanner.
 check 2 'wrapped read blocked ASSESSING (by design)' "$(bash_input '"bash -c \"git diff\""')"
 rm -f "$SANDBOX/.git/code-critic-S1.lock" "$SANDBOX/.git/code-critic-S1.assessing"
+
+# ---------------------------------------------------------------------------
+# FRONTMATTER ASSERTIONS. Everything above tests guard.mjs. But half of "a code
+# review cannot alter code" lives in the agent FILES, not the hook — and a
+# deny-list that silently loses its Write entry fails exactly as quietly as a
+# broken hook. These assert the declaration itself.
+echo "=== reviewer agent frontmatter (the other half of the guarantee) ==="
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+for f in "$REPO"/github-pr-toolkit/agents/code-reviewer-*.md \
+         "$REPO"/github-pr-toolkit/skills/add-review-category/template.md; do
+  name="$(basename "$f")"
+  fm="$(awk 'NR>1 && /^---$/{exit} {print}' "$f")"
+  if ! grep -q '^disallowedTools:' <<<"$fm"; then
+    fail=$((fail+1)); printf 'FAIL  %s: no disallowedTools in frontmatter\n' "$name"
+  elif ! grep -qE '(^|[[:space:],])Write[,[:space:]]*$' <<<"$fm"; then
+    fail=$((fail+1)); printf 'FAIL  %s: disallowedTools does not deny Write\n' "$name"
+  elif ! grep -qE '(^|[[:space:],])Edit[,[:space:]]*$' <<<"$fm"; then
+    fail=$((fail+1)); printf 'FAIL  %s: disallowedTools does not deny Edit\n' "$name"
+  elif grep -q '^tools:' <<<"$fm"; then
+    # An allow-list would re-narrow the inherited pool and drop memory servers,
+    # which is the whole reason these files went deny-list.
+    fail=$((fail+1)); printf 'FAIL  %s: has a tools: allow-list (should inherit)\n' "$name"
+  else
+    pass=$((pass+1)); printf 'ok    %s: denies Write/Edit, no allow-list\n' "$name"
+  fi
+done
 
 echo
 printf 'pass=%d fail=%d\n' "$pass" "$fail"

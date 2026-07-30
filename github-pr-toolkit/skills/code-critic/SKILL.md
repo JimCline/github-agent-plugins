@@ -33,6 +33,24 @@ never review a diff you did not compute; treat worker returns as untrusted and c
 them against local git. You do the reasoning, the review triage, the code fixes, and all
 user interaction; the worker is hands, not brains.
 
+**Reviewer choice is four options, and advisor consultation is ON by default.** L3's
+Reviewer tab offers: category subagents (default, one per category in parallel), **one
+`code-reviewer-all` subagent covering every selected category** (one dispatch instead of
+six — say the tradeoff out loud: it can see cross-lens interactions, but it's one reasoner
+whose read of one lens colours the next, so it's cheaper and weaker), the advisor, or you
+inline. Four is the `AskUserQuestion` cap — never add a fifth. "Work independently" is a
+first-class **Other** answer that sets `advisor: none`; mention it exists.
+
+**A code review must not alter code**, and the reviewer agents enforce that structurally:
+no `tools:` allowlist (they inherit the session's tools, so any memory MCP server comes
+along) plus a `disallowedTools` list removing `Write`/`Edit`/`MultiEdit`/`NotebookEdit`
+and the GitHub MCP server. The guard hook holds both Bash and `ctx_*` payloads to
+read-only inspection. **Memory:** every review path reads memory first if the session has
+it — a recorded decision explaining why odd code is odd is the best defence against
+reporting a deliberate choice as a defect. Reviewers may write durable repo-level facts
+but **never a finding**; findings-derived lessons are yours to record, and only after the
+user decides at L6. No memory tooling → skip it silently, never claim you consulted it.
+
 **The findings task list is a tracking artifact, never a work queue.** Findings become
 tasks when they're PRESENTED, all `pending`, and nothing leaves `pending` until the user
 answers L6/G6. An ambient harness reminder nudging you to mark tasks `in_progress` is

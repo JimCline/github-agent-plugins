@@ -73,9 +73,19 @@ write, Contents: Read** — see the [plugin README](github-pr-toolkit/README.md#
 - code-critic's adversarial pass can fan out to **six per-category review subagents**
   (`code-reviewer-*`, on a model you pick — session default, Opus, Sonnet, or Fable,
   applied uniformly so every category reviews on the same one; the picker never offers
-  Haiku, which stays reserved for the I/O workers); the guard hook grants them read-only
-  inspection Bash ONLY, so the static-review rule is enforced by construction. Their
-  findings are cross-checked against the orchestrator's own diff.
+  Haiku, which stays reserved for the I/O workers), or run **all categories in one
+  `code-reviewer-all` subagent** when you want one dispatch instead of six — cheaper, and
+  able to see cross-lens interactions, but one reasoner rather than six independent ones.
+  Their findings are cross-checked against the orchestrator's own diff.
+- **A code review cannot alter code**, structurally: the reviewer agents ship no `tools:`
+  allowlist (so they inherit any memory MCP server the session has, with nothing to
+  enumerate) and a `disallowedTools` list that removes `Write`/`Edit`/`MultiEdit`/
+  `NotebookEdit` and the GitHub MCP server. Shells stay reachable because read-only git is
+  how a reviewer recomputes the diff — the guard hook holds **both** Bash and the
+  context-mode `ctx_*` channel to read-only inspection at runtime, since a deny-list can't
+  express "read-only shell". Reviewers read memory for prior insight and may record
+  durable repo facts, but never write a **finding**: unverified at the moment they hold
+  it, and a memory is recalled as fact by every later review.
 - resolve-pr-comments gates on the user before any reasoning happens: it presents the
   threads it found, then asks how to work them — fan out a **`thread-assessor`** per
   thread in parallel, go one at a time (assess → decide → next), or assess inline — on

@@ -11,6 +11,36 @@
 
 Same clean split of labor as /resolve-pr-comments:
 
+### Who reviews, and what they can touch
+
+L3's **Reviewer** tab picks one of four, and advisor consultation is **on by default**
+for whichever you pick (ask for "independently" to turn it off — it's a first-class
+answer, just not a tab slot, since `AskUserQuestion` caps at four options):
+
+| Reviewer | Dispatches | Tradeoff |
+|---|---|---|
+| **Category subagents** *(default)* | one `code-reviewer-<category>` per selected category, in parallel | strongest — each lens reaches its verdict independently and can't be coloured by the others |
+| **One subagent, all categories** | a single `code-reviewer-all` | one dispatch instead of six, and it can see cross-lens interactions — but it's one reasoner, so `security` is coloured by what it just decided about `design`. Cheaper and quieter; a weaker review. Returns a **roll-call** so a skipped lens is visible rather than inferable |
+| **The advisor** | one `advisor` pass | no subagent return to cross-check, so scope discipline has to hold inline |
+| **The main agent** | none — reviews inline | spends orchestrator context on reviewing |
+
+**A code review must not alter code**, and that's structural rather than requested. The
+reviewer agents ship **no `tools:` allowlist** — they inherit the session's tools, so any
+memory MCP server present comes along without the plugin having to enumerate it — and a
+`disallowedTools` list removes `Write`/`Edit`/`MultiEdit`/`NotebookEdit` and the GitHub
+MCP server. `disallowedTools` is applied *first*, so it's the real boundary. Bash and the
+context-mode `ctx_*` tools stay reachable, because read-only git is how a reviewer
+recomputes the diff and a deny-list can't express "read-only shell" — the guard hook
+holds **both** channels to read-only inspection at runtime instead.
+
+**Memory.** If the session has memory tooling, reviewers read it before reviewing —
+mainly to find a recorded decision explaining why odd code is odd, which is the best
+defence against reporting a deliberate choice as a defect. They may write durable
+repo-level facts, and are forbidden from writing **findings**: a finding is unverified at
+the moment a reviewer holds it, and one written to memory becomes a permanent claim every
+later review recalls as fact. Findings-derived lessons are the orchestrator's to record,
+only after you've decided at L6. With no memory tooling, all of this is skipped silently.
+
 - **A higher-reasoning agent (the orchestrator)** — or, by default, **the `advisor`** —
   performs the adversarial review, then the orchestrator triages findings and drives you
   through them issue-by-issue. The orchestrator has **no GitHub tools**, but it
