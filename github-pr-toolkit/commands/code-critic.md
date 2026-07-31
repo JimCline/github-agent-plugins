@@ -128,14 +128,18 @@ ahead of L1's base question; in the GitHub PR flow, ahead of G1.1's worktree-loc
 question (G0's pick-a-PR interaction is target identification, not configuration, and
 doesn't count). *"When you approve findings, what happens to them?"* — options by flow:
 
-- **Local flow:** **Fix them (default)** — approved findings are fixed in the working
-  tree (L7), commit optional at L8. / **Report only** — findings are presented and
-  tracked; zero code changes this run. / **Decide after the review** — see the ranked
-  list first; L6 asks then.
+- **Local flow:** **Report only (default)** — findings are presented and tracked;
+  zero code changes this run. / **Fix them** — approved findings are fixed in the
+  working tree (L7), commit optional at L8. / **Decide after the review** — see the
+  ranked list first; L6 asks then.
 - **GitHub PR flow:** **Comment on the PR (default)** — approved findings post as one
   review; zero code changes. / **Fix on the PR branch** — approved findings are fixed in
   the worktree and committed & pushed to the PR branch by the worker (each issue can
   still take a comment instead — see G6). / **Decide after the review**.
+
+**Reporting is the default in BOTH flows** — a review's primary product is its
+findings; changing code is the opt-in, never the assumption. List the report/comment
+option first and mark it recommended.
 
 **Skip the ask when the intent was already stated.** An invocation or message that says
 "fix what you find", "just leave comments", "don't change anything" IS the answer:

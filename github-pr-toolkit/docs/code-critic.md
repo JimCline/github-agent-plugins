@@ -101,8 +101,9 @@ Or just ask in natural language ("review my local changes", "critique PR 1234") 
 
 ### Flow
 
-**Local:** declare the **outcome** — the first question of every run: fix approved
-findings (default), report only (zero code changes), or decide after the review; it
+**Local:** declare the **outcome** — the first question of every run: report only
+(default — zero code changes; a review's product is findings, and fixing is the
+opt-in), fix approved findings, or decide after the review; it
 rides as Tab 1 of the base ask, and is skipped only when you already said which you
 want → pick a base → orchestrator fetches and generates per-file diffs vs
 `origin/<base>` → pick the **review categories** (multi-select: General, Security,

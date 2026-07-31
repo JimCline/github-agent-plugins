@@ -34,9 +34,11 @@ them against local git. You do the reasoning, the review triage, the code fixes,
 user interaction; the worker is hands, not brains.
 
 **The outcome is the FIRST wizard question (step 0.3), and it binds the run.** Before
-any other configuration the user declares what approved findings become — local: **fix
-them** (default) / **report only** / **decide after**; PR: **comment on the PR**
-(default) / **fix on the PR branch** / **decide after**. Skip the ask only when the
+any other configuration the user declares what approved findings become — local:
+**report only** (default) / **fix them** / **decide after**; PR: **comment on the PR**
+(default) / **fix on the PR branch** / **decide after**. Reporting is the default in
+both flows: a review's primary product is findings, and changing code is the opt-in,
+never the assumption. Skip the ask only when the
 user already said which ("just comment", "fix what you find"). In comment/report mode
 you make NO code edits at any point in the run — a severe finding is never a reason to
 start fixing it, and only the user changes the mode. In PR fix mode, fixes go in the
