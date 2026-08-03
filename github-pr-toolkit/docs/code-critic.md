@@ -13,9 +13,15 @@ Same clean split of labor as /resolve-pr-comments:
 
 ### Who reviews, and what they can touch
 
-L3's **Reviewer** tab picks one of four, and advisor consultation is **on by default**
-for whichever you pick (ask for "independently" to turn it off — it's a first-class
-answer, just not a tab slot, since `AskUserQuestion` caps at four options):
+L3's **Reviewer** tab picks one of four, and advisor consultation is decided by the
+**model you pick at Tab 4**: consulted when you explicitly choose a cheaper one (Sonnet,
+Haiku, Fable), withheld on Opus or a session default left alone — the run cannot read its
+own tier, so the choice you made is the test. A same-tier advisor costs full price for no extra
+strength, and it is the one expense the Review-stats block cannot measure — so it is
+chosen, never assumed. The `advisor_policy` setting (`auto`/`always`/`never`) overrides
+the rule, and so does simply asking — "consult the advisor" and "have them work
+independently" are both first-class answers, just not tab slots, since
+`AskUserQuestion` caps at four options:
 
 | Reviewer | Dispatches | Tradeoff |
 |---|---|---|
@@ -23,6 +29,21 @@ answer, just not a tab slot, since `AskUserQuestion` caps at four options):
 | **One subagent, all categories** | a single `code-reviewer-all` | one dispatch instead of six, and it can see cross-lens interactions — but it's one reasoner, so `security` is coloured by what it just decided about `design`. Cheaper and quieter; a weaker review. Returns a **roll-call** so a skipped lens is visible rather than inferable |
 | **The advisor** | one `advisor` pass | no subagent return to cross-check, so scope discipline has to hold inline |
 | **The main agent** | none — reviews inline | spends orchestrator context on reviewing |
+
+**The recommended reviewer follows the diff's size.** L2 already measures the change, so
+the question names it: at **≤5 files and ≤200 changed lines** the single all-lens agent is
+recommended — six independent reviewers cost roughly 5× and, on a small diff, mostly
+re-read the same lines six times. Larger diffs recommend the fan-out, as before. It is a
+recommendation on a question you already answer, and the prompt always adds *"pick the
+fan-out if this change is high-stakes"*: size says how much there is to review, not how
+much is at risk, and a 20-line auth change deserves six lenses.
+
+If the orchestrator itself reads the change as high-stakes — auth, permissions, a
+migration, crypto, a payment path — it says so **in the question** ("2 files / 40 lines,
+but it changes an auth check — I'd recommend the fan-out") and asks. It never quietly
+re-weights the recommendation: a risk judgement is surfaced for you to decide on, not
+applied on your behalf. The thresholds are reasoned rather than measured — treat them as a
+default worth overriding.
 
 **You set the fan-out width.** Picking the per-category path with 2+ categories triggers
 one more question, naming the actual count: how many reviewers run at once — **6 at a

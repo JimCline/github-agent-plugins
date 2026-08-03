@@ -10,6 +10,17 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "TaskUpdate",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CODE_CRITIC_COMPACT_CHECKPOINT_TOKENS=\"${user_config.compact_checkpoint_tokens}\" node \"${CLAUDE_PLUGIN_ROOT}/hooks/context-watch.mjs\""
+          }
+        ]
+      }
     ]
   }
 }

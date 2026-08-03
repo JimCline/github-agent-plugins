@@ -97,7 +97,7 @@ repo each hold their own lock:
 `code-critic.assessing` under the fallback). This one turns on the STATIC-review gate
 (no test-running / code-execution / diagnosis Bash) and you REMOVE it the moment the user
 has chosen how to proceed (L6/G6) — see those steps. While arming, also
-clean up stale markers from crashed runs (`find "$PWD/.git" -maxdepth 1 \( -name 'code-critic*.lock' -o -name 'code-critic*.assessing' \) -mmin +480 -delete`
+clean up stale markers from crashed runs (`find "$PWD/.git" -maxdepth 1 \( -name 'code-critic*.lock' -o -name 'code-critic*.assessing' -o -name 'code-critic*.ctxmark' \) -mmin +480 -delete`
 — 480 min = 8h, matching `MAX_AGE_MS` in `hooks/guard.mjs` and doctor step 0; keep all
 three in step. This only fires when a review is armed IN this repo, so `/doctor` step 0
 is the way to clear markers in a repo you're not about to review)
@@ -110,7 +110,10 @@ fallback; another session may own it): e.g.
 `rm -f "$PWD/.git/code-critic-${CLAUDE_CODE_SESSION_ID}.lock"` — tell the user if you
 couldn't. Clear the assessment marker too on every exit path if it's still present
 (`rm -f "$PWD/.git/code-critic-${CLAUDE_CODE_SESSION_ID}.assessing"`), and the bare
-variants only if you armed the fallback.
+variants only if you armed the fallback. Remove the checkpoint marker on the same paths
+(`rm -f "$PWD/.git/code-critic-${CLAUDE_CODE_SESSION_ID}.ctxmark"`) — it is written by
+L7.1's hook, blocks nothing, and left behind would only suppress the first checkpoint
+offer of the next run in this repo.
 
 **0.2 Pick the mode.** If `$ARGUMENTS` names a PR (number or URL) → **GitHub PR flow**.
 If it passes `--branch`/`--against` or nothing → **Local flow** (default). If ambiguous,
@@ -169,6 +172,11 @@ Do this with your own read-only git — do NOT delegate it:
 2. `git diff origin/<base>...HEAD` (or `<ref>...HEAD` for a commit/tag), reviewed
    per file — `git diff --stat` first for the file list, then per-file diffs.
 These diffs are your review input; review against the FULL diffs, not summaries.
+
+**Keep two numbers from that `--stat`: the changed-file count and the total changed
+lines.** L3 states them in the reviewer question and uses them to pick which reviewer it
+recommends — a user choosing the width of a review should be told the size of the thing
+being reviewed, and this is the only step that computes it.
 
 ## L3 — Choose the review categories & the reviewer
 
@@ -251,8 +259,8 @@ a repo-wide audit.
 choice too — second opinions used to be their own tab, and folding them in here is what
 frees the fourth slot for the model.
 **This tab is reviewer IDENTITY — exactly four options, which is the cap.** Advisor
-consultation is no longer one of them: it is **ON by default** for whichever reviewer is
-chosen. That packing is deliberate — `AskUserQuestion` allows at most 4 options, and
+consultation is no longer one of them: it is resolved from Tab 4's model answer, per the
+rule below — not chosen here. That packing is deliberate — `AskUserQuestion` allows at most 4 options, and
 spending two of them on the same reviewer with consultation toggled left no room for the
 single-subagent path. Do not add a fifth option; the ask silently breaks.
 
@@ -270,14 +278,69 @@ single-subagent path. Do not add a fifth option; the ask silently breaks.
   covering the selected categories.
 - **The main agent (you)** — you perform the adversarial review yourself.
 
-**Advisor consultation is ON by default** for every path that can use it (both subagent
-paths and the main agent; "the advisor" IS the advisor). Reviewers take borderline and
-high-severity findings to the advisor before finalizing — ONE consolidated ask, not one
-call per finding. **"Have them work independently" is a first-class Other answer**, not a
-fallback: if the user asks for it in any form — before the ask, in the Other box, or
-after seeing the option — honor it and dispatch with `advisor: none`. Say in one line
-that consultation is on by default and can be turned off, so the option is discoverable
-without a tab slot.
+**Which of the first two is RECOMMENDED depends on the diff's size, and you state the
+size in the question.** Six independent reviewers on an 87-line diff mostly re-read the
+same 87 lines six times; the fan-out earns its ~5× when there is enough surface for the
+lenses to disagree about. Using L2's counts:
+
+- **≤ 5 files AND ≤ 200 changed lines** → recommend **One subagent, all categories**.
+- **Anything larger** → recommend **Category subagents**, as today.
+
+Name the numbers out loud and say what you are trading, e.g. *"This diff is 3 files / 87
+changed lines — one agent holding all lenses is the recommended default at this size; six
+independent reviewers cost roughly 5× and would mostly re-read the same 87 lines. Pick the
+fan-out if this change is high-stakes."*
+
+**Size is a proxy for how much there is to review, NEVER for how much is at risk.** A
+20-line change to an auth check, a permission rule, a migration, a crypto call or a payment
+path deserves the fan-out however small it measures.
+
+**When you judge a change high-stakes, ASK — never let the size band answer for you.** Say
+what you noticed, in the question itself: *"This is 2 files / 40 lines, which would
+normally suggest one agent — but it changes an auth check, so I'd recommend the fan-out."*
+Then let them choose. Your risk read is an **observation to surface, not a decision to take
+on their behalf**: silently downgrading a risky diff to one reviewer is the exact failure
+this rule exists to prevent, and silently upgrading a routine one spends their money on
+your hunch. Either way it is their call, and they can only make it if you said what you
+saw. Never re-weight the recommendation without naming the reason out loud.
+
+And whenever you recommend the cheaper option, still add *"pick the fan-out if this change
+is high-stakes"* — the user knows things about the change that the diff cannot show.
+
+This only ever moves the RECOMMENDATION on a question they already answer: the
+contamination tradeoff below still prints, and the fan-out stays one keystroke away.
+
+**These thresholds are provisional.** They are reasoned, not measured — nobody has yet
+compared recall at one reviewer versus six on diffs with known defects. Treat them as a
+default worth overriding, not a finding, and do not quote them as evidence that a
+one-agent review is as good.
+
+**Advisor consultation is decided by the reviewer's TIER, not defaulted on.** The advisor
+is only worth its price when it is genuinely stronger than the model asking: a top-tier
+reviewer consulting a top-tier advisor buys a second opinion of the same strength at full
+cost — and it is the one expense in this flow L8 cannot measure (see Review stats), so
+left on by default it grows unobserved. Resolve the directive once Tab 3 and Tab 4 are
+both in, from the model actually dispatched:
+
+- Tab 4 explicitly named a **cheaper model** — Sonnet, Haiku, or Fable → `advisor:
+  consult`. You deliberately dispatched a weaker reader, so the advisor is the stronger one.
+- Tab 4 named **Opus**, or was left at **session default** → `advisor: none`.
+
+**The discriminator is Tab 4's ANSWER, never a judgement about what the session model is.**
+You cannot read your own tier — there is no field for it — so any rule phrased as "is the
+session top-tier?" can only be answered by guessing, and a guess is not a basis for an
+expense nothing downstream can measure. "Did the user ask for a cheaper reviewer?" is the
+whole test, and it is one you can actually answer.
+
+Reviewers that do consult take borderline and high-severity findings to the advisor before
+finalizing — ONE consolidated ask, not one call per finding.
+
+The **`advisor_policy`** setting overrides the rule (`auto` = the tiers above and the
+default; `always`; `never`), and the user overrides everything: **"consult the advisor"
+and "have them work independently" are both first-class Other answers**, not fallbacks —
+honor either whenever it arrives, before the ask, in the Other box, or after seeing the
+option. Either way say in ONE line which directive you dispatched and why ("reviewers on
+Sonnet — advisor consultation on"), so the decision is visible without a tab slot.
 
 *If no advisor is available this session*, say so in one line and dispatch every path
 with `advisor: none` — all four reviewers still work, they just stand on their own
@@ -321,8 +384,13 @@ of them runs concurrent subagents, so there is nothing to cap.
 move on. A cap question with nothing to cap is noise.
 
 Otherwise ask: *"You selected **N** categories. How many reviewers should run at once?"*
-**Name the actual N in the question** — the whole point is that the user sees the width
-before it happens, not after.
+**Name the actual N in the question**, and the diff's size alongside it — the whole point
+is that the user sees the width before it happens, not after.
+
+**This cap is about pacing, not cost.** N reviewers read the same diff whether they run
+together or one after another, so lowering it spreads the same spend over more wall-clock
+and saves nothing. Never present it as a saving. The lever that changes what a review
+costs is Tab 3's reviewer choice, which has already been made by the time this is asked.
 
 - **6 at a time, rolling (default)** — at most 6 reviewers in flight; as each returns,
   the next queued category is dispatched into the freed slot. For the default selection
@@ -530,8 +598,10 @@ no subagent return to cross-check, so the discipline has to hold as you review: 
 writing a finding, name which changed line puts it in scope. If delegating to the
 advisor, tell it the same — static review, scoped to the change, **held to the
 WORTH-REPORTING bar above** (impact line included), surface uncertainty, do not execute
-anything. If YOU review, consultation is ON unless the user turned it off (or no advisor
-exists): take your borderline and high-severity findings to the advisor before finalizing
+anything. If YOU review, the same tier rule from Tab 3 applies to you — you are the
+session model, so consult only when the advisor is genuinely the stronger reader, or when
+the user or `advisor_policy` says to. When you do consult (and an advisor exists):
+take your borderline and high-severity findings to the advisor before finalizing
 and record its concurrence/dissent per finding.
 
 **Memory, on every review path.** If this session has memory/knowledge tooling — an MCP
@@ -758,16 +828,24 @@ survives a long working session and the user can see progress. Fewer than 3 → 
 a two-item list is noise. **You are the sole writer of this list** — the review
 subagents never touch it.
 
+**Only `subject` and `description` survive.** `TaskList` returns the subject; `TaskGet`
+returns the subject and the description; **neither ever returns `metadata`**. A value
+written to `metadata` cannot be read back by anything later in this flow — not by L7,
+not by the L8 summary. So every field this review still needs after the finding scrolls
+out of context goes in `subject` or `description`, and nowhere else.
+
 Each task:
 - **`subject`** — **lead with the severity in brackets**, then imperative and specific:
   *"[High] Fix unchecked null deref in `parser.ts:88`"*, not *"parser issue"*. The task
   list is read on its own, out of the order you presented, so a subject without its
-  severity strands the user.
-- **`description`** — the problem statement, the `file:line`, and the recommended
-  action, so the task stands alone if the finding scrolls out of context.
+  severity strands the user. This is also the only field L8 can read in bulk — one
+  `TaskList` call, no per-task reads — which is why L7 records each disposition here.
+- **`description`** — the problem statement, the `file:line`, the category tag(s), the
+  **`impact:` line verbatim**, and the recommended action, so the task stands alone if
+  the finding scrolls out of context. The impact line is not optional: L7 must show it
+  when it asks the user about this issue, and by then the finding itself is usually gone.
 - **`activeForm`** — *"Fixing unchecked null deref in parser.ts"*.
-- **`metadata`** — `{severity, file, category, status_detail: "proposed"}`. Carry these
-  as real fields; the L8 summary reads them back.
+- **`metadata`** — optional and **write-only**. Nothing may depend on reading it back.
 
 **Every task is created `pending` and stays there until L6.** `TaskCreate` makes them
 `pending` by default — do not touch status here. Creating the list is part of
@@ -827,17 +905,43 @@ enter this loop; they were handled as one batch in L5.
 **Drive the task list as you go** (skip this if L5.1 fell back to the numbered list):
 - **One task `in_progress` at a time.** Set it when you start that issue, and resolve it
   before starting the next. `TaskGet` it first — the tool warns its state can be stale.
-- **On finishing an issue, mark it `completed`** and record what actually happened in
-  `metadata.status_detail`: `fixed` / `declined` (the user rejected the finding) /
-  `skipped` / `deferred` (agreed but not done now) / `not-a-bug` (it didn't hold up).
-  There is no `cancelled` status, so **every disposition lands on `completed`** — the
-  metadata is the only thing that distinguishes them. Never use `deleted` for a skipped
-  finding; that destroys the record the list exists to keep.
+- **On finishing an issue, mark it `completed`** and record what actually happened by
+  **rewriting the `subject` to carry the disposition after the severity** —
+  *"[High] [fixed] Fix unchecked null deref in `parser.ts:88`"*. The dispositions are
+  `fixed` / `declined` (the user rejected the finding) / `skipped` / `deferred` (agreed
+  but not done now) / `not-a-bug` (it didn't hold up). There is no `cancelled` status, so
+  **every disposition lands on `completed`** — this prefix is the only thing that
+  distinguishes them, and the only place L8 can still read it. Never use `deleted` for a
+  skipped finding; that destroys the record the list exists to keep.
 - **Only `completed` when it's genuinely done.** A fix that failed, a test you broke, an
   edit you couldn't apply → leave it `in_progress` and say so.
 - **In *Fix all* / *Fix all by severity*, update as each fix lands** — not one batch
   update at the end. These modes are exactly where the user loses sight of what you're
   doing, which is the visibility this list exists to provide.
+
+**L7.1 — Offer a compaction checkpoint when the window gets long.** A one-by-one loop is
+where context grows fastest: every remaining issue is decided against a window the
+earlier ones already filled. You cannot see your own context size, so a `PostToolUse`
+hook measures the transcript and injects a `[code-critic]` note once it passes the
+threshold (200k tokens by default, `compact_checkpoint_tokens` to change it).
+
+When that note arrives, finish the issue in hand, then **offer** — don't act:
+
+- how many issues are done and how many remain;
+- that the state is on the task list and **survives compaction**, so nothing is lost —
+  each remaining task carries its severity, impact line and recommended action;
+- that they can run `/compact` and then say *continue*, and you'll pick up at the next
+  unresolved task.
+
+Then wait for their answer. **Never compact anything yourself** — nothing can trigger
+`/compact` from inside a turn — and never stall the review if they decline; carry on to
+the next issue. The estimate is a nudge, not a measurement: it is derived from transcript
+size and **must not appear in the Review stats block**, which is measured-only.
+
+If the session does compact and comes back mid-review, `TaskList` is the recovery path:
+the unresolved tasks are the remaining work, and each subject still leads with its
+severity. Re-read a task with `TaskGet` for its impact line and recommended action rather
+than reconstructing the finding from memory.
 
 ## L8 — Commit & push (delegated, optional — one ask, one dispatch)
 (In report-only mode nothing was changed, so there is no commit ask — this step is just
@@ -850,17 +954,19 @@ the SHA (and pushed ref) — verify the SHA with your own `git log -1`. If they 
 commit-only and later want to push, that's a separate *"PUSH task"* dispatch. Then
 remove the marker (step 0.1) and summarize.
 
-**Summarize FROM the task list, by disposition — not as a count.** `TaskList` plus each
-task's `metadata.status_detail` gives you what actually happened; "12 completed" tells
-the user nothing. Report it as *N fixed, N declined, N skipped, N deferred*, name any
-task still `in_progress` (that's unfinished work, say so plainly), and list the deferred
-ones explicitly — those are the findings the user agreed with but chose not to act on
-now, and they're the easiest thing to lose after the session ends.
+**Summarize FROM the task list, by disposition — not as a count.** One `TaskList` gives
+you every subject, and each subject carries `[Severity] [disposition]` per L7; "12
+completed" tells the user nothing. Report it as *N fixed, N declined, N skipped, N
+deferred*, name any task still `in_progress` (that's unfinished work, say so plainly),
+and list the deferred ones explicitly — those are the findings the user agreed with but
+chose not to act on now, and they're the easiest thing to lose after the session ends.
 
-**Carry severity into the summary too** (`metadata.severity`): break each disposition
-down by severity and name every unfixed **Critical/High** individually with its
-`file:line`. A Critical the user skipped is the single most important thing on the way
-out, and it is exactly what a flat count buries.
+**Carry severity into the summary too** — it is already in the subject: break each
+disposition down by severity and name every unfixed **Critical/High** individually with
+its `file:line`. A Critical the user skipped is the single most important thing on the
+way out, and it is exactly what a flat count buries. A subject that reached L8 with no
+disposition prefix means that issue never resolved — report it as unfinished rather than
+guessing which bucket it belonged in.
 
 ### Review stats (append to the closing summary — both flows, EVERY exit path)
 
@@ -887,7 +993,10 @@ Four sourcing rules govern every line:
 3. **What you cannot know, name rather than skip.** Your own consumption and any
    `advisor` calls are not measurable from inside the session — print them as
    `not measurable`, so the table's total reads as "of what was measured" and not as the
-   cost of the review.
+   cost of the review. Advisor spend is the largest thing this block cannot see, so when
+   the tier rule withheld it say so on that line (`withheld — reviewers at top tier`)
+   rather than omitting the line: an absent row reads as "didn't happen", and the user
+   should be able to tell a cost that was never incurred from one that went unmeasured.
 4. **Capture at RETURN time, not at summary time.** Usage metadata arrives attached to
    each dispatch's result — and in a long review those results scroll away or get
    compacted long before the summary is written. The moment a result carrying usage
@@ -904,6 +1013,7 @@ Review stats
   Reviewers (opus): general 41.2k · security 38.9k · design 44.0k · tests 35.1k
   Workers (haiku):  critic-worker ×2 — 9.8k
   Advisor:          consulted ×3 — tokens not measurable
+                    (or: withheld — reviewers at top tier)
   Orchestrator:     session model — not measurable
   Agents: 6 (4 reviewers, 2 workers) · measured total: 169.0k tokens
 ```
@@ -989,7 +1099,8 @@ gated).
 As in L2, with your own read-only git inside the worktree:
 `git -C <path> fetch origin <base>` then `git -C <path> diff origin/<base>...HEAD`
 (`--stat` first, then per file). Do NOT delegate this and do NOT review a diff you did
-not compute.
+not compute. **Keep the changed-file and changed-line counts as L2 does** — G3 runs L3 in
+full, and Tab 3's recommended reviewer is a function of those two numbers.
 
 ## G3–G5 — Review (same as L3–L5), then dedup against existing comments
 Run L3 in full — **all FOUR tabs in one AskUserQuestion**, not three. Categories / More
@@ -1059,10 +1170,12 @@ made at step 0.3 and only the user reopens it.
 The status model differs from L7, because **nothing is actually done until G7 posts**:
 - Set the issue you're working to `in_progress` — **one at a time**, resolved before you
   move on.
-- **On a decision, put it back to `pending`** and record the disposition in
-  `metadata.status_detail`: `queued` (comment approved into the queue), `skipped`
-  (with `already-flagged` when that's why), or — fix mode only — `fixed` (the edit is
-  applied in the worktree). A queued comment is not posted yet and a worktree fix is
+- **On a decision, put it back to `pending`** and record the disposition by rewriting the
+  `subject` to carry it after the severity, exactly as L7 does: `queued` (comment
+  approved into the queue), `skipped` (with `already-flagged` when that's why), or — fix
+  mode only — `fixed` (the edit is applied in the worktree). Metadata cannot be read back
+  (L5.1), so the subject is the only place this record survives to G7. A queued comment
+  is not posted yet and a worktree fix is
   not on the PR yet, so `completed` would be a lie — and a dozen findings sitting
   `in_progress` through the whole loop is not what the status models.
 - **G7 flips them.** Nothing reaches `completed` in this loop.
@@ -1103,14 +1216,16 @@ match exactly — any deviation is a failure to investigate, not "close enough".
 that the URLs are real `…/pull/<N>#discussion_r…` links, not reconstructions.
 
 **Then resolve the task list — only now, and only for what actually landed.** Mark
-`completed` each task whose comment came back with a real comment URL, setting
-`metadata.status_detail` to `posted` and `metadata.comment_url` — and, in fix mode, each
-`fixed` task once the commit's SHA is verified (record it in `metadata.commit_sha`; if
-the user chose commit-only, the disposition is `fixed-not-pushed`, and say plainly the
-PR does not have it yet). Tasks marked `skipped`
+`completed` each task whose comment came back with a real comment URL, rewriting its
+`subject` disposition to `posted` and putting the comment URL in the `description` — and,
+in fix mode, each `fixed` task once the commit's SHA is verified (the SHA goes in the
+`description` too; if the user chose commit-only, the disposition is `fixed-not-pushed`,
+and say plainly the PR does not have it yet). Subject and description are the only fields
+that read back (L5.1), and the URL and SHA are exactly what someone returning to this
+list later needs. Tasks marked `skipped`
 in G6 also go to `completed` (their disposition is already recorded — a skip is a
 decision, not a failure). **A comment that failed to post stays `pending`** with the
-error in `metadata.status_detail`; it is not done, and the retry offer below is what
+error in its `description`; it is not done, and the retry offer below is what
 finishes it. If cleanup succeeded but some comments failed, say exactly which findings
 have no comment on the PR.
 

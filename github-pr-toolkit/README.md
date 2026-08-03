@@ -369,7 +369,7 @@ then walks you through the fix and re-probes.
   session in the repo until then. `/github-pr-toolkit:doctor` step 0 lists them and offers
   to clear them; `/code-critic`'s own sweep only fires when you next arm a review *in that
   repo*. Manual escape hatch:
-  `rm -f .git/code-critic*.lock .git/code-critic*.assessing`.
+  `rm -f .git/code-critic*.lock .git/code-critic*.assessing .git/code-critic*.ctxmark`.
 
 - **`No such tool available: mcp__plugin_github-pr-toolkit_github__*`.** The plugin's
   server never connected. Most common cause: the `github_pat` config is empty —

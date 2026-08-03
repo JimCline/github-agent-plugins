@@ -46,13 +46,28 @@ worktree and one confirmed worker COMMIT(+PUSH) dispatch lands them on the PR br
 SHA-verified before cleanup. The review itself is identical in every mode, and the
 reviewers are never told the outcome.
 
-**Reviewer choice is four options, and advisor consultation is ON by default.** L3's
-Reviewer tab offers: category subagents (default, one per category in parallel), **one
+**Reviewer choice is four options, and advisor consultation follows Tab 4's model answer.**
+L3's Reviewer tab offers: category subagents (default, one per category in parallel), **one
 `code-reviewer-all` subagent covering every selected category** (one dispatch instead of
 six — say the tradeoff out loud: it can see cross-lens interactions, but it's one reasoner
 whose read of one lens colours the next, so it's cheaper and weaker), the advisor, or you
-inline. Four is the `AskUserQuestion` cap — never add a fifth. "Work independently" is a
-first-class **Other** answer that sets `advisor: none`; mention it exists.
+inline. Four is the `AskUserQuestion` cap — never add a fifth. **Which of the first two is
+RECOMMENDED follows the diff's size**, from L2's `--stat` counts: **≤5 files and ≤200
+changed lines → recommend the single all-lens agent**; larger → the fan-out, as today. Say
+the numbers out loud, and whenever you recommend the cheap one add *"pick the fan-out if
+this change is high-stakes"* — size measures how much there is to review, never how much
+is at risk. **If YOU judge the change high-stakes (auth, permissions, migration, crypto,
+payments), say what you noticed IN the question and recommend the fan-out — then ask.** A
+risk read is an observation to surface, never a decision to take for the user; never
+re-weight the recommendation without naming the reason. Thresholds are reasoned, not
+measured; they move the recommendation only, never the user's choice. The advisor is consulted
+only when Tab 4 explicitly named a cheaper model — `advisor: consult` for
+Sonnet/Haiku/Fable, `advisor: none` for Opus or a session default left alone. The test is
+Tab 4's answer, never a guess about the session's own tier (unreadable) — since a
+same-tier advisor costs full price for no extra strength and
+its spend is the one thing the stats block can't measure. `advisor_policy`
+(`auto`/`always`/`never`) and the user both override it; either way say which you
+dispatched and why.
 
 **Fan-out width is the user's call, not a default (L3.0).** When the per-category fan-out
 is chosen and 2+ categories are selected, ask — as a SEPARATE question after the four
@@ -184,11 +199,13 @@ tabs of ONE AskUserQuestion** — the model is never a follow-up ask →
 per-category adversarial review (subagent findings cross-checked against YOUR diff,
 merged, deduped across categories) → severity-ranked numbered
 findings with a succinct action each, **tracked as a task list** (3+ findings; one task
-per finding, all `pending`, severity/file/category in metadata) → choose how to work the
+per finding, all `pending`, severity leading the subject and the impact line in the
+description — `metadata` is never returned by any reader, so nothing may depend on it) →
+choose how to work the
 list (fix mode: one-by-one / fix all / by severity; report-only: done / a no-edits
 walkthrough recording agree/decline/defer) → in fix mode apply fixes, driving the task list one
 `in_progress` at a time and recording each disposition (fixed / declined / skipped /
-deferred) in `metadata.status_detail` → one commit-and-push ask → one worker
+deferred) as a prefix on the task subject → one commit-and-push ask → one worker
 COMMIT(+PUSH) dispatch → summarize BY DISPOSITION, not as a count.
 **GitHub PR:** preflight + onboard the `github_pat` (Metadata:Read, Pull requests:R/W,
 Contents:Read) → declare the outcome + choose the worktree location — one ask, two

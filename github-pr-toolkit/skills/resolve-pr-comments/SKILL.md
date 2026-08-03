@@ -113,9 +113,11 @@ If you cannot read that file, follow this outline (same steps):
    replied+resolved, N denied, N failed* — never a bare count.
 
 **Task tracking (3+ threads):** step 3.5 creates one task per thread, all `pending`, with
-`{thread_id, path, line, author, status_detail}` in metadata — `thread_id` is what ties a
-task back to GitHub at step 7. `status_detail` advances `unassessed` → `assessed:*` →
-`approved:*`/`denied` → `fixed` → `replied+resolved:*`. Only ONE task is `in_progress` at
+the reviewer's point, `path:line`, author and a `thread_id:` line in the `description` —
+`thread_id` is what ties a task back to GitHub at step 7, and `metadata` is never returned
+by `TaskList` or `TaskGet`, so nothing readable may live there. The disposition rides as a
+bracketed prefix on the `subject`, advancing `[assessed:*]` →
+`[approved:*]`/`[denied]` → `[fixed]` → `[replied+resolved:*]`. Only ONE task is `in_progress` at
 a time (never during a parallel assessor fan-out — those stay `pending`), and nothing
 reaches `completed` before step 8. Falls back to the numbered list if the Task tools
 aren't in the session.

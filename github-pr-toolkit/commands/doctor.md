@@ -11,8 +11,8 @@ kind of thing people run a doctor to find. `/code-critic` arms marker files in
 
 **0.1 Inventory.** From the repo root:
 ```
-find "$PWD/.git" -maxdepth 1 \( -name 'code-critic*.lock' -o -name 'code-critic*.assessing' \) -print
-find "$PWD/.git" -maxdepth 1 \( -name 'code-critic*.lock' -o -name 'code-critic*.assessing' \) -mmin +480 -print
+find "$PWD/.git" -maxdepth 1 \( -name 'code-critic*.lock' -o -name 'code-critic*.assessing' -o -name 'code-critic*.ctxmark' \) -print
+find "$PWD/.git" -maxdepth 1 \( -name 'code-critic*.lock' -o -name 'code-critic*.assessing' -o -name 'code-critic*.ctxmark' \) -mmin +480 -print
 ```
 The second list is the subset older than 8h. Nothing found → say so in one line and go
 to the MCP probes.
@@ -27,6 +27,9 @@ to the MCP probes.
   and doing its job.
 - **`code-critic*.assessing`** — blocks non-read-only Bash (the static-review gate) for
   its session. Same session-scoping logic as above.
+- **`code-critic*.ctxmark`** — **blocks nothing.** It is the debounce high-water mark for
+  L7.1's compaction-checkpoint offer. A leftover one only suppresses the first checkpoint
+  offer of the next run in this repo, so report it as litter, never as a blocker.
 - **Older than 8h** — the guard already ignores these (`MAX_AGE_MS` in
   `hooks/guard.mjs`), so they are litter, not blockers. Safe to remove.
 

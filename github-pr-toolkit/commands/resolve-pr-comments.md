@@ -208,11 +208,17 @@ just showed into tasks (`TaskCreate`, one per thread, in the order presented) so
 run survives context compaction and the user can see progress. Fewer than 3 → skip it.
 **You are the sole writer of this list** — the `thread-assessor` never touches it.
 
+**Only `subject` and `description` survive.** `TaskList` returns the subject; `TaskGet`
+returns the subject and the description; **neither ever returns `metadata`**. Nothing read
+back later may live there — least of all the `thread_id`, which is what ties a task to
+GitHub in Step 7 and is unrecoverable if the thread list has scrolled out of context.
+
 Each task: **`subject`** imperative and specific (*"Resolve @alice's null-check comment
-on `parser.ts:88`"*); **`description`** the reviewer's point plus `path:line` and author,
-so it stands alone; **`activeForm`** (*"Resolving @alice's comment on parser.ts"*);
-**`metadata`** `{thread_id, path, line, author, status_detail: "unassessed"}`. The
-`thread_id` is what ties a task back to GitHub in Step 7 — always carry it.
+on `parser.ts:88`"*), which later gains a bracketed disposition prefix as Steps 5–8
+decide it; **`description`** the reviewer's point, the `path:line`, the author, **and the
+`thread_id` on its own line** (`thread_id: <id>`), so the task stands alone and Step 7 can
+still address GitHub from it; **`activeForm`** (*"Resolving @alice's comment on
+parser.ts"*). **`metadata`** is optional and **write-only** — never depend on reading it.
 
 All tasks are `pending`, and they stay that way: **creating this list does not authorize
 assessment.** The 3.5.2 answer does. If the Task tools aren't available this session, say
@@ -340,22 +346,39 @@ drop and note anything that isn't, and never let a returned proposal invent a fi
 line. You remain responsible for the proposals you present, whoever reasoned them.
 
 **Task list during assessment** (skip if 3.5.1a fell back to the numbered list). Match
-the status to the mode, and match tasks to results by `metadata.thread_id`:
+the status to the mode, and match tasks to results by the `thread_id:` line in each task's
+`description` (`TaskGet`) — metadata does not read back:
 - **One at a time** — set that thread's task `in_progress` while it's being assessed,
   exactly one at a time, and drop it back to `pending` once its proposal is in hand.
 - **Research all / waves** — leave every task `pending`. A parallel fan-out would put a
   dozen tasks `in_progress` at once, which is not what the status models and tells the
   user nothing.
-- **Either way**, when a proposal lands record it in `metadata.status_detail` as
-  `assessed:fix`, `assessed:reject`, or `assessed:discuss`. Assessment is not
+- **Either way**, when a proposal lands record it by prefixing the task `subject` with
+  `[assessed:fix]`, `[assessed:reject]`, or `[assessed:discuss]`, and put the proposal
+  itself in the `description` beneath the reviewer's point — those two fields are all
+  that Step 5 can still read once the assessment scrolls out. Assessment is not
   completion — **nothing reaches `completed` in this step**, because nothing has been
   decided, changed, or posted.
 
-If an **advisor** capability is available to you this session (an advisor tool/model),
-**recommend to the user** that you consult it on the `discuss` items and any high-impact
-`fix`/`reject` calls, and fold its input in if they agree. If no advisor is available,
-say so in one line and continue. When an assessor subagent is doing the work, this
-choice becomes its `advisor:` directive line rather than something you do yourself.
+**Advisor consultation follows the assessor's TIER.** The advisor only earns its cost when
+it is genuinely stronger than the model asking, and its spend is not measurable from
+inside the session — so it is decided, never defaulted on:
+
+- The model question explicitly named a **cheaper model** — Sonnet, Haiku, or Fable →
+  **recommend to the user** that the `discuss` items and any high-impact `fix`/`reject`
+  calls go to the advisor, and fold its input in if they agree.
+- It named **Opus**, or was left at **session default** → `advisor: none`.
+
+**The discriminator is that answer, never a judgement about what the session model is.**
+You cannot read your own tier, so a rule phrased as "is the session top-tier?" can only be
+guessed at — and this is an expense nothing downstream can measure. "Did the user ask for
+a cheaper assessor?" is the whole test.
+
+The **`advisor_policy`** setting overrides the rule (`auto` / `always` / `never`), and the
+user overrides everything — asking for it in any form is a first-class answer. If no
+advisor is available, say so in one line and continue. When an assessor subagent is doing
+the work, this choice becomes its `advisor:` directive line rather than something you do
+yourself; when YOU assess inline, it applies to you on the same terms.
 
 ---
 
@@ -380,9 +403,11 @@ your proposed action, and any advisor input, then ask (AskUserQuestion):
 **Discuss** (open-ended; iterate with the user until satisfied, then re-ask).
 Record each thread's final decision and the exact resolution note to post later.
 
-**Record each decision on its task** — `metadata.status_detail` becomes
-`approved:fix`, `approved:reject` (the reviewer's point is being pushed back on), or
-`denied` (the user rejected your proposal). Tasks stay `pending`: a decision is not a
+**Record each decision on its task** — replace the subject's bracketed prefix with
+`[approved:fix]`, `[approved:reject]` (the reviewer's point is being pushed back on), or
+`[denied]` (the user rejected your proposal), and put the exact resolution note you will
+post into the `description`. Step 7 dispatches from that note, so it has to survive the
+window it was written in. Tasks stay `pending`: a decision is not a
 posted reply. In individual mode set the current thread `in_progress` while you work it
 and return it to `pending` once decided, so exactly one is ever in flight.
 
@@ -403,7 +428,8 @@ For every thread whose decision is a code **fix** (approved by the user, nothing
 Run the project's tests/build if present, and report the results.
 
 **Task list:** set a thread's task `in_progress` while you make its edit and return it to
-`pending` with `metadata.status_detail: "fixed"` (plus the commit SHA once pushed) — one
+`pending` with the subject prefix `[fixed]` and the commit SHA appended to the
+`description` once pushed — one
 at a time. Still not `completed`: the reviewer hasn't been replied to and the thread
 isn't resolved. If a fix fails or breaks tests, leave that task `in_progress` and say so
 rather than moving on quietly.
@@ -447,13 +473,14 @@ echo back data you gave it. Offer to retry failures (re-delegate just those — 
 one batched dispatch).
 
 **Now close out the task list — this is the ONLY step that marks anything `completed`,
-and only for what the worker actually confirmed.** Match failures back by `thread_id`.
-- A thread that was **replied to and resolved** → `completed`, with
-  `metadata.status_detail` set to `replied+resolved:fix` or `replied+resolved:reject`.
+and only for what the worker actually confirmed.** Match failures back by the `thread_id:`
+line in each task's `description`.
+- A thread that was **replied to and resolved** → `completed`, subject prefix
+  `[replied+resolved:fix]` or `[replied+resolved:reject]`.
 - A thread the user **denied** (your proposal rejected, nothing sent) → `completed` with
-  `denied`; that's a decision, not a failure, and it belongs in the record.
-- A thread whose tuple **FAILED** → leave it `pending` with the error in
-  `metadata.status_detail`. It has no reply on GitHub, so it is not done; the retry offer
+  `[denied]`; that's a decision, not a failure, and it belongs in the record.
+- A thread whose tuple **FAILED** → leave it `pending`, prefix `[failed]`, and put the
+  error in the `description`. It has no reply on GitHub, so it is not done; the retry offer
   above is what finishes it.
 - Anything still `in_progress` is unfinished work — name it explicitly rather than
   letting it look resolved.
