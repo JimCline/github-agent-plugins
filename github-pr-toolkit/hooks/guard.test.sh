@@ -113,6 +113,32 @@ touch "$SANDBOX/.git/code-critic-S1.assessing"
 check 2 'npm test while assessing'     "$(bash_input '"npm test"')"
 check 0 'git diff while assessing'     "$(bash_input '"git diff"')"
 check 2 'gh pr view while assessing'   "$(bash_input '"gh pr view 5"')"
+
+# Durable-agent transport carve-out: pane.mjs send/wait/peek/list/cancel inject
+# a prompt into another session and poll a mailbox — read-only for gate
+# purposes. The match is narrow; every hole probed below is a hole an agent
+# under a denied dispatch WILL eventually try.
+echo "=== assessing gate: durable-agent transport carve-out ==="
+check 0 'pane send, literal path'      "$(bash_input '"node /x/agent-hierarchy/hooks/pane.mjs send --key ah-crit-reviewer-1 --summary \"Review the PR\""')"
+check 0 'pane send, quoted path'       "$(bash_input '"node \"/x/agent hierarchy/hooks/pane.mjs\" send --key ah-r-1"')"
+check 0 'pane wait with timeout'       "$(bash_input '"node /x/agent-hierarchy/hooks/pane.mjs wait --key ah-r-1 --timeout 3600"')"
+check 0 'pane list'                    "$(bash_input '"node /x/agent-hierarchy/hooks/pane.mjs list"')"
+check 0 'pane cancel'                  "$(bash_input '"node /x/agent-hierarchy/hooks/pane.mjs cancel --key ah-r-1"')"
+check 0 'discovery assignment + send'  "$(bash_input '"PANE=\"$(ls -t /x/*/agent-hierarchy/*/hooks/pane.mjs 2>/dev/null | head -1)\"; node \"$PANE\" send --key ah-r-1 --summary \"one line\""')"
+check 0 'send with quoted heredoc'     "$(bash_input '"node /x/hooks/pane.mjs send --key ah-r-1 <<'\''PROMPT'\''\nReview the diff; run nothing.\nPROMPT"')"
+check 0 'discovery + heredoc combined' "$(bash_input '"PANE=\"$(ls -t /x/*/hooks/pane.mjs 2>/dev/null | head -1)\"; node \"$PANE\" send --key ah-r-1 <<'\''PROMPT'\''\nbody\nPROMPT"')"
+check 2 'pane close is not transport'  "$(bash_input '"node /x/agent-hierarchy/hooks/pane.mjs close --key ah-r-1"')"
+check 2 'pane create is not transport' "$(bash_input '"node /x/agent-hierarchy/hooks/pane.mjs create --agent reviewer"')"
+check 2 'chained command after send'   "$(bash_input '"node /x/hooks/pane.mjs send --key k; npm test"')"
+check 2 'piped command after wait'     "$(bash_input '"node /x/hooks/pane.mjs wait --key k | sh"')"
+check 2 'unquoted heredoc delimiter'   "$(bash_input '"node /x/hooks/pane.mjs send --key k <<PROMPT\nbody\nPROMPT"')"
+check 2 'substitution head is not ls'  "$(bash_input '"PANE=\"$(node -e evil)\"; node \"$PANE\" send --key k"')"
+check 2 'substitution smuggles a semicolon' "$(bash_input '"PANE=\"$(ls /x; rm -rf .)\"; node \"$PANE\" send --key k"')"
+check 2 'bare $PANE, no assignment'    "$(bash_input '"node \"$PANE\" send --key k"')"
+check 2 'pane.mjs as a comment decoy'  "$(bash_input '"npm test # node /x/hooks/pane.mjs send"')"
+check 2 'expanding double-quoted arg'  "$(bash_input '"node /x/hooks/pane.mjs send --key k --summary \"x $(rm -rf .)\""')"
+check 2 'redirect smuggled into wait'  "$(bash_input '"node /x/hooks/pane.mjs wait --key k > /etc/passwd"')"
+check 0 'single-quoted arg is data'    "$(bash_input '"node /x/hooks/pane.mjs send --key ah-r-1 --summary '\''has; odd | chars'\''"')"
 rm -f "$SANDBOX/.git/code-critic-S1.assessing"
 
 echo "=== MCP gate (always on) ==="

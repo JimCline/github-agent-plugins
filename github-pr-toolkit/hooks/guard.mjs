@@ -59,6 +59,15 @@
 // allowlist); anything else (npm/pytest/make/node/python/./script …) is blocked
 // with feedback to present-and-ask. The marker is gone by the time the user has
 // approved a way to proceed, so legitimate post-approval test runs are fine.
+//
+// One carve-out: the agent-hierarchy durable-agent transport
+// (`hooks/pane.mjs send|wait|peek|list|cancel`) is read-only FOR GATE PURPOSES
+// — it injects a prompt into another live session and polls a mailbox file; it
+// executes nothing in this repo. Without it, a durable agent picked as the
+// reviewer is blocked at dispatch AND at every reply collection, and the only
+// workaround (lift the marker, send, re-arm) leaves the gate off during
+// exactly the phase it exists for. See isDurableAgentTransport for how narrow
+// the match is and why.
 
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -236,14 +245,22 @@ const assessing =
     lockActive(input.cwd, `code-critic-${input.session_id}.assessing`)) ||
   lockActive(input.cwd, 'code-critic.assessing');
 
-if (assessing && tool === 'Bash' && !isReadOnlyBash(cmd)) {
+if (assessing && tool === 'Bash' && !isReadOnlyBash(cmd) && !isDurableAgentTransport(cmd)) {
+  const paneHint = cmd.includes('pane.mjs')
+    ? ' If this was a durable-agent dispatch: that transport IS allowed, but only ' +
+      'in the exact shape `node "<path>/hooks/pane.mjs" send|wait|peek|list|cancel …` ' +
+      '— an optional leading `PANE="$(ls -t …/hooks/pane.mjs 2>/dev/null | head -1)";` ' +
+      'assignment, a QUOTED heredoc delimiter for the prompt, and nothing else ' +
+      'chained in the same command string.'
+    : '';
   process.stderr.write(
     'code-critic assessment gate: the review is a STATIC pass over the diff. Do ' +
       'not run tests, execute code, or shell out to diagnose whether a finding is ' +
       'real — that verification is an ACTION that needs the user’s approval first. ' +
       'Surface the finding AS uncertain in the severity list, and if confirming it ' +
       'needs work, PRESENT that work and ask before doing it. (Read-only git and ' +
-      `file inspection are allowed.) Blocked: \`${cmd}\``
+      `file inspection are allowed.) Blocked: \`${cmd}\`` +
+      paneHint
   );
   process.exit(2);
 }
@@ -354,6 +371,61 @@ function isReadOnlyBash(command) {
     if (!READ_ONLY_HEADS.has(head)) return false;
   }
   return true;
+}
+
+// The agent-hierarchy durable-agent transport is READ-ONLY for gate purposes:
+// `pane.mjs send|wait|peek|list|cancel` injects a prompt into another live
+// session's terminal and polls a mailbox for the reply file — it executes
+// nothing in this repo. Blocking it made a durable agent unusable as the
+// reviewer during exactly the phase it was picked for (denied at dispatch and
+// again at every reply collection).
+//
+// The match is deliberately NARROW — the resolved hooks/pane.mjs path (or a
+// same-command discovery assignment of it) in command position, an allowed
+// subcommand, and hazard-free arguments — because "contains pane.mjs" would be
+// a bypass dressed as a carve-out (`npm test # pane.mjs send`). `close` and
+// `create`/`open` are NOT transport: one kills processes, the other launches
+// them, and neither is part of conducting a review. Err toward denial: a false
+// block is a retyped command; a false allow is a silent bypass.
+function isDurableAgentTransport(command) {
+  let head = String(command);
+  // A heredoc body is stdin data, not shell — but only under a QUOTED
+  // delimiter; an unquoted one performs command substitution inside the body,
+  // so it stays refused. Validate the text before the operator, ignore the body.
+  const hd = /<<-?\s*(['"])[A-Za-z_][A-Za-z0-9_]*\1/.exec(head);
+  if (hd) head = head.slice(0, hd.index);
+  else if (head.includes('<<')) return false;
+  head = head.trim();
+
+  // Optional leading discovery assignment — the one idiom the flows emit,
+  // shape-checked because arbitrary $(…) content would EXECUTE on the shell:
+  //   PANE="$(ls -t <glob ending hooks/pane.mjs> [2>/dev/null] [| head -1])";
+  // or a literal-path assignment. The substitution's head must be `ls`.
+  let varName = null;
+  const assign =
+    /^([A-Za-z_][A-Za-z0-9_]*)=(?:"?\$\(\s*ls\s+(?:-[A-Za-z0-9]+\s+)*[^\s;|&`$()]*\/hooks\/pane\.mjs\s*(?:2>\/dev\/null\s*)?(?:\|\s*head\s+-n?\s*1\s*)?\)"?|"?[^\s;|&`$()"]*\/hooks\/pane\.mjs"?)\s*;?\s*/.exec(
+      head
+    );
+  if (assign) {
+    varName = assign[1];
+    head = head.slice(assign[0].length);
+  }
+
+  // What remains must be EXACTLY one node invocation of pane.mjs. A bare
+  // `"$VAR"` with no same-command assignment is refused — shell state does not
+  // persist between tool calls, so there is no verifiable value behind it.
+  const ref = varName
+    ? `(?:"\\$${varName}"|\\$${varName})`
+    : '(?:"[^"$`]*\\/hooks\\/pane\\.mjs"|[^\\s;|&`$()"]*\\/hooks\\/pane\\.mjs)';
+  const inv = new RegExp(
+    `^node\\s+${ref}\\s+(send|wait|peek|list|cancel)\\b([\\s\\S]*)$`
+  ).exec(head);
+  if (!inv) return false;
+
+  // Remaining args: quoted strings are data — except double quotes holding
+  // `$` or a backtick, which still expand, so those stay visible to the scan.
+  const rest = inv[2].replace(/"[^"$`]*"/g, '""').replace(/'[^']*'/g, "''");
+  return !/[;&|<>`$\n(){}]/.test(rest);
 }
 
 // Reviewer-subagent Bash grant (stricter than isReadOnlyBash, which exists for
