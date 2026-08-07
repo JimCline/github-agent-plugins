@@ -1,5 +1,5 @@
 ---
-description: Adversarial code review of a local diff or a GitHub PR — the FIRST wizard question declares the run's outcome (fix approved findings, or only comment/report them — the review itself is identical either way), then the user picks review categories (general, security, design, adherence, performance, tests), a reviewer (parallel category subagents, the advisor, or the main agent), and the model those subagents run on (session default, Opus, Sonnet, or Fable — one model across every category); findings are triaged by severity and acted on issue-by-issue in the declared mode. GitHub writes and commits/pushes go through a Haiku worker; diffs you generate yourself.
+description: Adversarial code review of a local diff or a GitHub PR — the FIRST wizard question declares the run's outcome (fix approved findings, or only comment/report them — the review itself is identical either way), then the user picks review categories (general, security, design, adherence, performance, tests), a reviewer (parallel category subagents, the advisor, the main agent, or — as a first-class Other answer when one is live in this repo — an agent-hierarchy durable agent), and the model those subagents run on (session default, Opus, Sonnet, or Fable — one model across every category); findings are triaged by severity and acted on issue-by-issue in the declared mode. GitHub writes and commits/pushes go through a Haiku worker; diffs you generate yourself.
 argument-hint: "[PR number/URL, or --branch <ref> / --against <ref> for local — optional]"
 ---
 
@@ -278,6 +278,20 @@ single-subagent path. Do not add a fifth option; the ask silently breaks.
   covering the selected categories.
 - **The main agent (you)** — you perform the adversarial review yourself.
 
+**A live durable agent is a first-class *Other* answer, not a fifth option.** When the
+agent-hierarchy plugin's durable agents are live (your session context carries their
+roster, or `node "<pane.mjs path from that roster>" list` names one) AND one is rooted
+in THIS repo, say so in the question text — name its key and note that answering Other
+(e.g. *"use the durable reviewer"*) picks it — and treat that answer exactly like an
+option: dispatch per L4's durable path. State the tradeoffs when you offer it and again
+if picked: it carries the all-categories tradeoff (one reasoner holds every lens), it is
+whatever role it was created as (e.g. `agent-hierarchy:reviewer` is a general validator,
+not the specialized category prompts — L4 compensates by passing every selected
+checklist inline), and what it buys is a warm, prompt-cached, watchable session that may
+already know this codebase from earlier work. An agent whose `list` line is flagged
+**"not this session's cwd" is NOT offered** — it would review the wrong tree. No live
+durable agent, or none in this repo → say nothing; the tab is unchanged.
+
 **Which of the first two is RECOMMENDED depends on the diff's size, and you state the
 size in the question.** Six independent reviewers on an 87-line diff mostly re-read the
 same 87 lines six times; the fan-out earns its ~5× when there is enough surface for the
@@ -348,8 +362,9 @@ reasoning. Do not drop options or re-ask.
 
 **Tab 4 — "Reviewer model".** *"Which model should the review subagents run on? One
 model runs every selected category."* Always present this tab. It governs the subagent
-paths; if the user picked the advisor or the main agent in Tab 3, note in one line that
-their answer here doesn't apply and move on — do NOT drop the tab to avoid the moot
+paths; if the user picked the advisor, the main agent, or a durable agent in Tab 3, note
+in one line that their answer here doesn't apply (a durable agent runs the model it was
+created with) and move on — do NOT drop the tab to avoid the moot
 case, because a dropped tab is how this ask went missing in the first place.
 - **Default (model I'm using)** — every reviewer inherits the model running this
   session.
@@ -377,8 +392,9 @@ Never pin reviewers to Haiku; it is not offered here for that reason.
 **Ask this as its own AskUserQuestion, AFTER the four-tab ask, and only on the fan-out
 path.** It cannot be a fifth tab — four is the hard cap — and it cannot ride inside the
 four, because the number of categories is not known until Tab 1/2 are answered. Skip it
-entirely for the advisor, the main agent, and the single `code-reviewer-all` agent: none
-of them runs concurrent subagents, so there is nothing to cap.
+entirely for the advisor, the main agent, a durable agent, and the single
+`code-reviewer-all` agent: none of them runs concurrent subagents, so there is nothing
+to cap.
 
 **Skip it too when only ONE category was selected** — announce the single dispatch and
 move on. A cap question with nothing to cap is noise.
@@ -425,7 +441,7 @@ subagent) runs tests, executes code, or diagnoses to prove a finding out. A find
 can't be fully confirmed from the diff is still a finding: mark it *uncertain —
 confirming needs `<X>`* and carry it into the list.
 
-### What is IN SCOPE (applies to ALL three review paths — subagents, advisor, and you)
+### What is IN SCOPE (applies to ALL review paths — subagents, advisor, durable agent, and you)
 
 **This review is about the change, not about the codebase.** A finding is in scope only
 if the diff **introduces** it, or **newly exposes or worsens** it. Everything else — a
@@ -452,7 +468,7 @@ cite the diff. A `file:line` inside a hunk is NOT sufficient evidence of scope.
 If the user explicitly asks for a broader review, that's their call — honor it and say
 you've widened the scope. Absent that, stay on the change.
 
-### What is WORTH REPORTING (applies to ALL three review paths — subagents, advisor, and you)
+### What is WORTH REPORTING (applies to ALL review paths — subagents, advisor, durable agent, and you)
 
 **This is a quality review, not a quota.** A finding earns its place by mattering, not by
 existing. The test is one question: **what goes wrong if this ships?** Answer it
@@ -514,7 +530,8 @@ missing one means an ask went out incomplete — not that you may fill the gap y
    review produces findings with no declared destination — that gap is precisely where
    a reviewer turns into an uninvited fixer.
 
-Ask for whichever is missing now, then continue.
+Ask for whichever is missing now, then continue. The durable path is exempt from (1)
+and (2) — no model parameter to pass, nothing to fan out — but never from (3).
 
 **If ONE subagent for all categories was chosen:** dispatch a single
 `code-reviewer-all` agent. Everything about the dispatch matches the fan-out below —
@@ -538,6 +555,45 @@ cross-check below to every finding.
 Do not fan out as well. One subagent means one dispatch — if you also dispatch per
 category "to be thorough", you have overridden the user's choice and doubled the cost of
 the thing they picked to make cheaper.
+
+**If a DURABLE agent was chosen (the first-class Other answer from Tab 3):** the
+reviewer is a live agent-hierarchy session reached through its `pane.mjs` transport,
+which the assessment gate deliberately exempts (`send|wait|peek|list|cancel` inject a
+prompt and poll a mailbox — they execute nothing in this repo). **The `.assessing`
+marker STAYS ARMED throughout — never lift it to dispatch or collect.** Use the
+`pane.mjs` path your durable roster names. Everything about the dispatch matches the
+all-categories agent above — same absolute repo (or worktree) path, same base spec, same
+changed-file list, same adherence hand-off, same roll-call demand — with these
+differences:
+
+- **Pass EVERY selected category's checklist inline, built-ins included.** The durable
+  agent is its created role — a general validator, not one of the plugin's category
+  agents — so unlike `code-reviewer-all` it holds none of the lenses. `Read` each
+  selected `code-reviewer-<slug>.md` (customs too) and put the checklist text in the
+  prompt. A lens not passed is a lens not reviewed. Long prompts are fine — the
+  transport delivers oversized prompts as a task file on its own.
+- **The prompt is self-contained and STATIC-ONLY.** The durable session is a different
+  session, outside this session's assessing marker, so the contract rides in prose:
+  reason over the diff only; do not run tests, execute code, or diagnose — directly or
+  via any runner — and report a finding that needs verification as *uncertain —
+  confirming needs `<X>`*. Tell it to compute the diff itself with read-only
+  `git -C "<absolute path>"` against the base spec you name.
+- **Structure the reply for the transport.** Ask for `## TL;DR` opening with the
+  roll-call (one line per category), then one `## <category>` section holding that
+  lens's findings in the fixed shape (severity, `file:line`, `impact:`, `scope:`,
+  category tag). A long reply spills to disk size-gated; the named sections keep it
+  fetchable without pulling the whole body into context.
+- **Tab 4 does not apply** — the agent runs the model it was created with; say so in
+  one line. Dispatch with `advisor: none` (its role has no advisor tool); if the tier
+  rule, `advisor_policy`, or the user calls for consultation, YOU take the merged
+  borderline and high-severity findings to the advisor after L5 dedup instead.
+- **Send and collect per the /agent-hierarchy:durable flow.** Its send confirmation IS
+  the dispatch ask — do not ask twice. The transport's default timeout will usually
+  lapse before a review finishes: that is its normal ending, not a failure — arm the
+  background `wait` its timeout output names and keep working the flow until the reply
+  lands. Then run the SAME roll-call check and provenance cross-check as above; the
+  transport changes nothing downstream, and a missing lens or fabricated line is judged
+  exactly as it would be from a subagent.
 
 **If category subagents were chosen:** dispatch ONE `code-reviewer-<category>` agent per
 selected category (the built-ins — general / security / design / adherence /

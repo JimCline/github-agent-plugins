@@ -51,7 +51,13 @@ L3's Reviewer tab offers: category subagents (default, one per category in paral
 `code-reviewer-all` subagent covering every selected category** (one dispatch instead of
 six — say the tradeoff out loud: it can see cross-lens interactions, but it's one reasoner
 whose read of one lens colours the next, so it's cheaper and weaker), the advisor, or you
-inline. Four is the `AskUserQuestion` cap — never add a fifth. **Which of the first two is
+inline. Four is the `AskUserQuestion` cap — never add a fifth. **A live agent-hierarchy
+durable agent rooted in THIS repo is a first-class *Other* answer**: when the roster names
+one, say so in the question (its key, pick via Other) and state its tradeoffs — the
+all-categories tradeoff plus it reviews as whatever role it was created as (checklists
+passed inline compensate), in exchange for a warm, prompt-cached session; an agent flagged
+as rooted elsewhere is never offered, its transport is gate-exempt so the assessing marker
+stays armed, and Tab 4 doesn't apply (it runs its created model). **Which of the first two is
 RECOMMENDED follows the diff's size**, from L2's `--stat` counts: **≤5 files and ≤200
 changed lines → recommend the single all-lens agent**; larger → the fan-out, as today. Say
 the numbers out loud, and whenever you recommend the cheap one add *"pick the fan-out if
