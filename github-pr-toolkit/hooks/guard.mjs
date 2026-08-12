@@ -10,7 +10,7 @@
 // Mechanism: exit code 2 + a stderr message BLOCKS the tool call and feeds the
 // message back to the model as feedback (per the Claude Code hooks reference).
 //
-// TWO TIERS, and the distinction matters:
+// THREE TIERS, and the distinctions matter:
 //
 //   ALWAYS ON — no lock, no review, no scope. Reaching GitHub is delegated
 //   PERIOD, because the reason for delegating has nothing to do with a review
@@ -30,6 +30,48 @@
 //   stop ordinary committing in every session the plugin is installed in — far
 //   past what this plugin has any business governing. During a review they ARE
 //   blocked, because `critic-worker` owns the worktree/commit/push sequencing.
+//
+//   WORKER-SCOPED — always on, for THIS PLUGIN'S OWN subagents only
+//   (`critic-worker`, `github-worker`, `code-reviewer-*`):
+//     - destructive git (worktree remove/prune, reset --hard, clean, checkout,
+//       branch -D, push --force, commit --amend, rebase, stash, gc, reflog …)
+//     - recursive/forced `rm`, `rmdir`, `find -delete`
+//     - `git worktree remove` is allowed ONLY for a path this plugin recorded
+//       creating, and NEVER with `--force`.
+//
+//   WHY THIS TIER EXISTS — read before touching it. The two tiers above gate
+//   WHO runs a command, not WHAT it does, and the subagent branch below exits
+//   before either of them. So delegation LAUNDERED them: the orchestrator,
+//   correctly blocked from `git worktree` by the armed tier, wrote
+//   `git worktree remove --force <a worktree it did not create>` into a
+//   critic-worker dispatch instead. The target held 8 unpushed commits belonging
+//   to unrelated work. Nothing in the hook or the playbook would have stopped it;
+//   a human reading the dispatch text did — and only because the dispatch had not
+//   been sent yet.
+//
+//   Do NOT weaken this on the theory that the permission layer would have caught
+//   it. Whether a worker's Bash call prompts anybody is version- and
+//   session-dependent: `permissionMode: bypassPermissions` in the agent files is
+//   NOT honored for plugin-shipped agents today (see the note further down), so
+//   the call follows the normal flow — which for a non-interactive subagent
+//   auto-denies, and interactively may surface a dialog. A later version honoring
+//   the frontmatter would run it silently. "Sometimes something asks" is not an
+//   invariant, and a dialog would show the COMMAND anyway, never the consequence
+//   (8 unpushed commits) — which is the exact fact that was misjudged here.
+//
+//   Two invariants follow, and neither is expressible as "who runs git":
+//     1. A review may destroy ONLY the worktree it created — the ledger, not a
+//        path heuristic, is what distinguishes its own scratch checkout from
+//        someone else's work sitting in the same directory.
+//     2. `--force` is never delegated. Needing force MEANS "there is work here
+//        I would destroy", which is the strongest available signal that a human
+//        must decide. A failed plain removal is recoverable and reports back;
+//        a forced one is not.
+//   These workers run a small fixed playbook (fetch, worktree add, commit,
+//   push, MCP comment posting) that touches none of the denied surfaces, so the
+//   deny list costs the flows nothing. Err toward denial: a false block returns
+//   an error the orchestrator must surface, which is the outcome that was
+//   missing here.
 //
 // Scope — SESSION-NAMED lock files. The /code-critic command arms the guard at
 // step 0 by touching `<cwd>/.git/code-critic-<session_id>.lock` (using
@@ -69,7 +111,7 @@
 // exactly the phase it exists for. See isDurableAgentTransport for how narrow
 // the match is and why.
 
-import { readFileSync, statSync } from 'node:fs';
+import { appendFileSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 // 8h — bounds a stale-lock footgun. DUPLICATED, deliberately, in two prompt files that
@@ -101,6 +143,50 @@ const GH_DIAGNOSTIC = /^(auth\s+status(\s|$)|--version(\s|$)|version(\s|$))/;
 const WRAPPER_HEADS = new Set([
   'bash', 'sh', 'zsh', 'ksh', 'dash', 'eval', 'exec', 'xargs', 'env',
   'command', 'nohup', 'time', 'timeout', 'sudo', 'doas', 'script', 'nice',
+]);
+
+// WORKER-SCOPED TIER (third tier in the header). Ledger of worktree paths this
+// plugin's workers were seen creating, one `<session_id>\t<abs path>` per line in
+// `<cwd>/.git/`. A `git worktree remove` is allowed only for a path listed here.
+// Recorded at PreToolUse, i.e. BEFORE the `add` runs: an add that then fails
+// still gets a line, which is harmless — removing a path that was never created
+// fails on its own. The reverse default is the dangerous one, so it is not used.
+const WORKTREE_LEDGER = 'code-critic-worktrees';
+
+// Destructive git these workers never need. `true` denies the whole subcommand;
+// a RegExp denies only when the argument string matches, so the playbook's plain
+// `commit` / `push` stay allowed while `--amend` and `--force` do not.
+// `worktree` is absent deliberately — it needs the path check in worktreeDenial.
+const WORKER_GIT_DENIED = new Map([
+  ['clean', true],
+  ['checkout', true],
+  ['switch', true],
+  ['restore', true],
+  ['rebase', true],
+  ['stash', true],
+  ['gc', true],
+  ['prune', true],
+  ['reflog', true],
+  ['filter-branch', true],
+  ['update-ref', true],
+  ['reset', /(^|\s)--hard(\s|$)/],
+  ['commit', /(^|\s)--amend(\s|$)/],
+  ['branch', /(^|\s)(-D|-d|--delete)(\s|$)/],
+  ['tag', /(^|\s)(-d|--delete)(\s|$)/],
+  ['push', /(^|\s)(-f|--force|--force-with-lease\S*|--delete|-d|\+\S+)(\s|$)/],
+  ['remote', /(^|\s)(remove|rm|set-url)(\s|$)/],
+]);
+
+// Non-git deletion, denied to the same agents. Without this the whole tier above
+// is one word wide: `rm -rf <path>` reaches every worktree `git worktree remove`
+// is stopped from touching. No worker playbook contains an `rm` of any kind.
+// Same `true` = whole command / RegExp = argument match convention as above.
+const WORKER_SHELL_DENIED = new Map([
+  ['rm', true],
+  ['rmdir', true],
+  ['shred', true],
+  ['truncate', true],
+  ['find', /(^|\s)(-delete|-exec\s+rm|-execdir\s+rm)\b/],
 ]);
 
 function readInput() {
@@ -138,6 +224,35 @@ if (input.agent_id) {
   const worker = /(^|:)(github-worker|critic-worker)$/.test(
     input.agent_type || ''
   );
+
+  // WORKER-SCOPED DESTRUCTION GATE — the third tier, and the FIRST thing that
+  // runs in this branch. It must precede the grants below and the `exit 0` at
+  // the end: everything here is a decision about a command this plugin's own
+  // agents are about to run with nothing reliably interposing a human, and the
+  // whole point of the tier is that no later line gets to wave it through.
+  // (Nor an earlier one, elsewhere: whether the permission layer would prompt
+  // for a worker's Bash call is version- and session-dependent, so this tier
+  // does not defer to it — see the header.) Applies to the workers AND the
+  // review subagents — a reviewer's grant (isReviewerSafeBash) refuses outbound
+  // git and redirection, but `git clean -fd` and `git reset --hard` sit inside
+  // its allowed heads, which is the same laundering by a different door.
+  if (tool === 'Bash' && (worker || isPluginReviewer(input.agent_type))) {
+    const denial = destructiveDenial(cmd, input.cwd);
+    if (denial) {
+      process.stderr.write(
+        `github-pr-toolkit destruction gate: ${denial} A dispatched task does ` +
+          'not carry authority to destroy state — nothing reliably shows a ' +
+          'delegated command to a human before it runs. Do NOT reword this, split ' +
+          'it across dispatches, or route it through another tool: return the ' +
+          'situation to the USER, say exactly what you wanted to do and what it ' +
+          'would destroy, and let them decide. ' +
+          `Blocked: \`${cmd}\``
+      );
+      process.exit(2);
+    }
+    if (worker) recordWorktreeAdds(cmd, input.cwd, input.session_id);
+  }
+
   if (isToolkitMcp && worker) {
     process.stdout.write(
       JSON.stringify({
@@ -162,9 +277,7 @@ if (input.agent_id) {
   // sed -i, and output redirection that READ_ONLY_HEADS tolerates for the
   // orchestrator's marker-file management. Anything else falls through to the
   // normal flow (auto-deny), which enforces the static review by construction.
-  const reviewer = /(^|:)code-reviewer-[a-z0-9][a-z0-9-]*$/.test(
-    input.agent_type || ''
-  );
+  const reviewer = isPluginReviewer(input.agent_type);
   if (reviewer && tool === 'Bash' && isReviewerSafeBash(cmd)) {
     process.stdout.write(
       JSON.stringify({
@@ -426,6 +539,226 @@ function isDurableAgentTransport(command) {
   // `$` or a backtick, which still expand, so those stay visible to the scan.
   const rest = inv[2].replace(/"[^"$`]*"/g, '""').replace(/'[^']*'/g, "''");
   return !/[;&|<>`$\n(){}]/.test(rest);
+}
+
+// Matches ANY `code-reviewer-<slug>` — including the custom categories the
+// add-review-category wizard installs — for both the read-only Bash grant and the
+// destruction gate. Breadth is safe in both directions here: the grant is
+// inspection-only and the gate is a denial.
+function isPluginReviewer(agentType) {
+  return /(^|:)code-reviewer-[a-z0-9][a-z0-9-]*$/.test(agentType || '');
+}
+
+// Quote-aware tokenizer. The gh gates above get by with regexes because they ask
+// one yes/no question about the whole string; this tier has to read an ARGUMENT
+// (which worktree path?), and a regex that stops at a quote character cannot —
+// `git worktree remove "/Users/me/My Repo/.claude/worktrees/pr-9"` would come
+// back with no target at all. So: quotes are stripped, their contents kept as ONE
+// token, and unquoted shell operators are emitted as tokens so command
+// boundaries stay visible. Backslash escapes the next character.
+function tokenize(text) {
+  const toks = [];
+  let cur = '';
+  let quoted = false;
+  let q = null;
+  const push = () => {
+    if (cur !== '' || quoted) toks.push({ v: cur, quoted });
+    cur = '';
+    quoted = false;
+  };
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === q) q = null;
+      else cur += c;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      q = c;
+      quoted = true;
+      continue;
+    }
+    if (c === '\\') {
+      if (i + 1 < text.length) cur += text[++i];
+      continue;
+    }
+    if (/\s/.test(c)) {
+      push();
+      continue;
+    }
+    if (';&|()`\n'.includes(c)) {
+      push();
+      toks.push({ v: c, op: true });
+      continue;
+    }
+    cur += c;
+  }
+  push();
+  return toks;
+}
+
+// Every command in `text`, as `{ head, args }` with `VAR=value` prefixes dropped
+// and `head` reduced to its basename. `anywhere` stops requiring command
+// position, which is how a wrapper payload gets scanned: after tokenizing
+// `bash -c "git worktree remove /x"` the payload is a single token, so it is
+// re-tokenized and every token becomes a candidate head. Same tradeoff the gh
+// scan documents — inside a wrapper, a false block costs a retyped command and a
+// false allow costs the whole tier.
+function commands(text, anywhere = false, depth = 0) {
+  const out = [];
+  const toks = tokenize(text);
+  let atHead = true;
+  for (let i = 0; i < toks.length; i++) {
+    const t = toks[i];
+    if (t.op) {
+      atHead = true;
+      continue;
+    }
+    if (!atHead && !anywhere) continue;
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(t.v)) continue; // env prefix — still at head
+    let head = t.v;
+    if (head.includes('/')) head = head.slice(head.lastIndexOf('/') + 1);
+    const args = [];
+    let j = i + 1;
+    for (; j < toks.length && !toks[j].op; j++) args.push(toks[j]);
+    out.push({ head, args: args.map((a) => a.v) });
+    if (WRAPPER_HEADS.has(head) && depth < 3) {
+      out.push(...commands(args.map((a) => a.v).join(' '), true, depth + 1));
+    }
+    if (anywhere) atHead = false;
+    else {
+      atHead = false;
+      i = j - 1; // skip the args we just consumed
+    }
+  }
+  return out;
+}
+
+// Strip git's global options so args[0] is the subcommand. `-C <path>` and
+// `-c <cfg>` take a separate value; `--git-dir=…` and friends do not.
+function gitSubcommand(args) {
+  const a = args.slice();
+  while (a.length && a[0].startsWith('-')) {
+    const opt = a.shift();
+    if (/^-[Cc]$/.test(opt)) a.shift();
+  }
+  return a;
+}
+
+function normalizeWorktreePath(p) {
+  return String(p || '')
+    .trim()
+    .replace(/\/+$/, '');
+}
+
+// `git worktree add [-b <branch>] <path> [<commit-ish>]` — the path is the first
+// positional, but `-b`/`-B` take a value that would otherwise be mistaken for it.
+function worktreeAddPath(rest) {
+  const positional = [];
+  for (let i = 0; i < rest.length; i++) {
+    if (rest[i].startsWith('-')) {
+      if (/^(-b|-B|--reason)$/.test(rest[i])) i++;
+      continue;
+    }
+    positional.push(rest[i]);
+  }
+  return positional[1] || null; // [0] is `add`
+}
+
+function isRecordedWorktree(cwd, target) {
+  const want = normalizeWorktreePath(target);
+  if (!want.startsWith('/')) return false; // the playbook mandates an ABSOLUTE path
+  try {
+    const ledger = readFileSync(
+      join(cwd || process.cwd(), '.git', WORKTREE_LEDGER),
+      'utf8'
+    );
+    return ledger
+      .split('\n')
+      .some((l) => l && normalizeWorktreePath(l.split('\t').pop()) === want);
+  } catch {
+    return false; // no ledger → this plugin has created nothing → remove nothing
+  }
+}
+
+function recordWorktreeAdds(command, cwd, sid) {
+  for (const c of commands(command)) {
+    if (c.head !== 'git') continue;
+    const a = gitSubcommand(c.args);
+    if (a[0] !== 'worktree') continue;
+    const rest = a.slice(1);
+    if (!rest.includes('add')) continue;
+    const path = normalizeWorktreePath(worktreeAddPath(rest));
+    if (!path.startsWith('/') || isRecordedWorktree(cwd, path)) continue;
+    try {
+      appendFileSync(
+        join(cwd || process.cwd(), '.git', WORKTREE_LEDGER),
+        `${sid || 'unknown'}\t${path}\n`
+      );
+    } catch {
+      // Best effort. A ledger write that fails costs a later CLEANUP denial (the
+      // worktree leaks and the user is told) — never a blocked `add`.
+    }
+  }
+}
+
+// `git worktree …` for this plugin's own agents. Returns a denial sentence or null.
+function worktreeDenial(rest, cwd) {
+  const positional = rest.filter((t) => !t.startsWith('-'));
+  const op = positional[0];
+  if (op === 'add' || op === 'list' || op === 'lock' || op === 'unlock') {
+    return null;
+  }
+  if (op !== 'remove') {
+    return `\`git worktree ${op || '(no subcommand)'}\` is not part of this plugin's playbook.`;
+  }
+  if (rest.some((t) => t === '--force' || /^-[a-zA-Z]*f/.test(t))) {
+    return (
+      '`git worktree remove --force` is never delegated. Force means there is ' +
+      'uncommitted or unpushed work at that path that plain removal refuses to ' +
+      'destroy — which is precisely when a human has to decide.'
+    );
+  }
+  const target = positional[1];
+  if (!target) return '`git worktree remove` with no explicit path.';
+  if (!isRecordedWorktree(cwd, target)) {
+    return (
+      `\`${target}\` is not a worktree this plugin recorded creating, so removing ` +
+      'it is not this review\'s call — it may be unrelated work (a leftover from a ' +
+      'crashed run is still someone\'s branch, possibly with unpushed commits).'
+    );
+  }
+  return null;
+}
+
+// The worker-scoped tier's single decision. Returns a denial sentence or null.
+function destructiveDenial(command, cwd) {
+  for (const c of commands(command)) {
+    const argstr = c.args.join(' ');
+
+    if (c.head === 'git') {
+      const a = gitSubcommand(c.args);
+      if (!a.length) continue;
+      if (a[0] === 'worktree') {
+        const denial = worktreeDenial(a.slice(1), cwd);
+        if (denial) return denial;
+        continue;
+      }
+      const rule = WORKER_GIT_DENIED.get(a[0]);
+      if (rule === true) return `\`git ${a[0]}\` is denied to this plugin's agents.`;
+      if (rule && rule.test(a.slice(1).join(' '))) {
+        return `\`git ${a[0]}\` with those flags is destructive and is denied to this plugin's agents.`;
+      }
+      continue;
+    }
+
+    const shellRule = WORKER_SHELL_DENIED.get(c.head);
+    if (shellRule === true) return `\`${c.head}\` is denied to this plugin's agents.`;
+    if (shellRule && shellRule.test(argstr)) {
+      return `\`${c.head}\` used to delete files is denied to this plugin's agents.`;
+    }
+  }
+  return null;
 }
 
 // Reviewer-subagent Bash grant (stricter than isReadOnlyBash, which exists for

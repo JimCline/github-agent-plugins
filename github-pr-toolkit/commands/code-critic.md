@@ -101,8 +101,21 @@ clean up stale markers from crashed runs (`find "$PWD/.git" -maxdepth 1 \( -name
 — 480 min = 8h, matching `MAX_AGE_MS` in `hooks/guard.mjs` and doctor step 0; keep all
 three in step. This only fires when a review is armed IN this repo, so `/doctor` step 0
 is the way to clear markers in a repo you're not about to review)
-and check `.claude/worktrees/` for leftover worktrees from crashed runs (offer to have the
-worker clean them up).
+and check `.claude/worktrees/` for leftover worktrees from crashed runs.
+
+**A leftover worktree is REPORTED, never cleaned up on your own initiative.** List what
+you found and *ask* — one line each, with `git -C <path> status --short | wc -l` and
+`git -C <path> log --oneline @{u}.. 2>/dev/null | wc -l` so the user can see whether it
+holds uncommitted or unpushed work — then wait for an answer. You may not fold a removal
+into another dispatch, and you may not use `--force` at all. THIS IS THE STEP THAT FAILED:
+the phrasing here was once "offer to have the worker clean them up", which got read as
+authority to bundle `git worktree remove --force <a stranger's worktree, 8 unpushed
+commits>` into the same critic-worker dispatch as the PR checkout. Do not assume something
+downstream would have asked: whether a worker's command reaches a human at all is
+version- and session-dependent, and a permission dialog shows the command, not the eight
+commits. If the user says remove it, that is a dispatch of
+its own, plain (unforced) removal only, and a failure comes back to them rather than
+escalating to force. A leftover worktree costs disk; a removed one can cost work.
 **Run the arming command yourself from the repo root** so `$PWD/.git` matches the path the
 guard checks. On EVERY exit path (success, abort, or error) you MUST remove the lock YOU
 armed (the session-named one — or the bare `code-critic.lock` only if you armed the

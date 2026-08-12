@@ -32,6 +32,15 @@ to the MCP probes.
   offer of the next run in this repo, so report it as litter, never as a blocker.
 - **Older than 8h** — the guard already ignores these (`MAX_AGE_MS` in
   `hooks/guard.mjs`), so they are litter, not blockers. Safe to remove.
+- **`code-critic-worktrees`** — **not a marker, and not litter. Never delete it, and never
+  report it as clearable.** It is the guard's ledger of worktrees this plugin created; the
+  worker-scoped tier permits `git worktree remove` only for a path listed in it, so
+  deleting it does not unblock anything — it denies legitimate CLEANUP and leaks review
+  worktrees instead. It deliberately falls outside the `find` patterns above; if a future
+  edit widens them to `code-critic*`, this file gets swept and that tier starts failing
+  closed. It has no age semantics: a plugin-created worktree stays removable however old
+  the line is, because unforced removal cannot destroy commits (the `cc-pr-<N>` branch
+  outlives its worktree) and refuses outright when the tree is dirty.
 
 **0.3 Offer to clear** (AskUserQuestion — never delete unprompted):
 - **Clear the stale ones (default)** — everything from the `-mmin +480` list. The guard

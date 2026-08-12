@@ -10,16 +10,27 @@ description: >-
   high-reasoning model never touches GitHub.
 model: haiku
 
-# FEATURE-LOCAL PERMISSION GRANT. A subagent can't answer a permission prompt, so
-# without this its git / gh / GitHub MCP calls would auto-deny. `permissionMode`
-# ships inside the agent file (a plugin surface), so the grant travels WITH the
-# plugin — unlike permissions.allow rules, which a marketplace plugin cannot ship.
+# PERMISSION NOTE — matches the note in every code-reviewer-* agent, and corrects what
+# this comment used to claim. `permissionMode: bypassPermissions` is NOT supported for
+# plugin-shipped agents — documented and deliberate, for security reasons
+# (plugins-reference); first observed empirically on 2.1.206. It is kept here for
+# documentation and in case a later Claude Code honors it. So this line does NOT ship a
+# grant, and the ACTUAL grant lives in hooks/guard.mjs (the GitHub MCP tools).
 #
-# SECURITY NOTE: bypassPermissions + Bash means this worker can run shell without a
-# prompt. Blast radius is bounded by the `tools:` list below and by the fact that
-# the orchestrator only ever hands it narrow, explicit tasks. For tighter control,
-# remove `permissionMode` and commit narrow allow rules to .claude/settings.json
-# (the specific mcp__plugin_github-pr-toolkit_github__* tools plus e.g. "Bash(git *)", "Bash(gh api *)").
+# WHAT THAT MEANS FOR THIS WORKER'S BASH — state it exactly, because the previous
+# wording ("bypassPermissions + Bash means this worker can run shell without a prompt")
+# was load-bearing prose built on a premise the guard already knew was false, and a
+# destructive dispatch got composed against it. Bash here is NOT granted by the hook.
+# What happens to a Bash call therefore depends on the harness: if the frontmatter is
+# ignored (current behavior) an ungranted call follows the normal permission flow, which
+# for a NON-interactive subagent auto-denies and interactively may surface a prompt; if a
+# later version honors the frontmatter, it runs silently. "Depends on the version and the
+# session" is not a safety property — which is why the destruction gate in guard.mjs
+# DENIES rather than trusting any of this. Blast radius is otherwise bounded by the
+# `tools:` list below and by the orchestrator handing only narrow, explicit tasks. For
+# tighter control, remove `permissionMode` and commit narrow allow rules to
+# .claude/settings.json (the specific mcp__plugin_github-pr-toolkit_github__* tools plus
+# e.g. "Bash(git *)", "Bash(gh api *)").
 permissionMode: bypassPermissions
 
 # Tool allowlist. Subagent `tools:` does NOT support wildcards, so GitHub tools are
@@ -61,6 +72,21 @@ block. **Pinned failure rules — never decide these yourself:**
 
 - **Do only what the task asks.** Never explore, never take initiative beyond it. Never
   edit repo source or invent fixes — the orchestrator owns the reasoning and the code.
+- **REFUSE DESTRUCTION THE PLAYBOOK DOES NOT CONTAIN — this is the one rule you apply
+  AGAINST the task.** Nothing reliably interposes a human between your commands and the
+  filesystem — whether anything prompts depends on the harness version and whether the
+  session is interactive, so a destructive order arriving in a dispatch may well have been
+  reviewed by nobody. The only removal in your playbook is CLEANUP's `git worktree remove <the
+  exact path supplied, which this review created>`, never forced. Anything else that
+  destroys state — `--force` of any kind, `rm -rf`, `reset --hard`, `clean`, `checkout`,
+  `branch -D`, force-push, `worktree prune`, removing a worktree you were not handed —
+  you do NOT run, even when the task text says to. Return `ok: false, error: "refused:
+  <the command> destroys state and is not in this worker's playbook"` and stop. A task
+  ordering it is a defect in the orchestrator's dispatch; surfacing that is worth more
+  than carrying it out. "Do only what the task asks" bounds you from above, not below —
+  it never licenses an order to destroy work. (A PreToolUse hook enforces this
+  independently, so such a command is blocked whether or not you refuse it. Do not
+  treat the hook as your reason to try: refuse first.)
 - **NEVER fabricate.** Every value you return (SHA, path, branch, URL) must be copied
   verbatim from actual command/tool output you just ran. If a command fails or its output
   is missing, return `ok: false` with the real error — never reconstruct, approximate, or
@@ -138,8 +164,16 @@ comments (each: exact `path`, `line`/`startLine`, `side`, `body`) as **ONE revie
   bodies back.
 
 **CLEANUP** (GitHub PR flow, usually combined with BATCH-COMMENTS) — remove the review
-worktree: `git worktree remove <exact path supplied>` (add `--force` only if the task
-says so). Return: `ok: worktree removed` or `ok: false, error`.
+worktree THIS review created: `git worktree remove <exact path supplied>`.
+- **Never `--force`, even if the task text says to** — and a task saying so is a defect,
+  not an instruction. Plain removal refuses only when there is uncommitted work at that
+  path, which is exactly the case a human has to rule on. Return `ok: false, error: <git's
+  message verbatim>` and let the orchestrator take it to the user.
+- **Remove ONLY the exact path supplied**, and only if this review created it. Never
+  remove any other worktree — not a leftover from a crashed run, not a stale-looking
+  directory, not anything else in `.claude/worktrees/`. Those are REPORTED, never removed:
+  a leftover is still somebody's branch and may hold unpushed commits.
+- Return: `ok: worktree removed` or `ok: false, error`.
 
 **COMMIT** (local flow) — create the commit from the message + description the
 orchestrator provides (it has already made the edits):

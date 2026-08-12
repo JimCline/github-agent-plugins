@@ -84,7 +84,7 @@ only after you've decided at L6. With no memory tooling, all of this is skipped 
   `git commit`/`push`. It hands back short, verifiable results that the orchestrator
   cross-checks against local git.
 
-A **PreToolUse guard hook** enforces the split, in two tiers.
+A **PreToolUse guard hook** enforces the split, in three tiers.
 
 **Always on** — no lock, no review, no session scope. Both routes to GitHub are denied
 to the main agent and granted to the workers: the plugin's GitHub MCP tools
@@ -105,6 +105,27 @@ hold their own lock. This tier stays lock-scoped on purpose — it's plain git a
 whatever remote the repo has, not GitHub API access, and blocking it always would stop
 ordinary committing in every session the plugin is installed in. `git fetch` and
 read-only git stay allowed throughout.
+
+**Worker-scoped** — always on, and pointed at this plugin's *own* subagents rather than at
+the main agent. The two tiers above gate **who** runs a command; this one gates **what it
+does**, because delegation laundered them both. The orchestrator, correctly blocked from
+`git worktree` by the armed tier, wrote `git worktree remove --force <a worktree it had
+not created>` into a `critic-worker` dispatch instead. The target held eight unpushed
+commits of unrelated work, and nothing in the hook or the playbooks would have stopped it
+— a human reading the dispatch text did, before it was sent. Do not talk yourself out of
+this tier on the theory that the permission layer would have caught it: whether a worker's
+Bash call prompts anybody is version- and session-dependent (plugin agents' declared
+`permissionMode` is not honored today, a non-interactive subagent's ungranted call
+auto-denies, an interactive one may prompt), and a prompt would show the *command*, never
+the consequence. So `critic-worker`, `github-worker`, and every
+`code-reviewer-*` agent are denied destructive git (`reset --hard`, `clean`, `checkout`,
+`branch -D`, force-push, `commit --amend`, `rebase`, `worktree prune`) plus recursive `rm`
+— and `git worktree remove` is allowed **only** for a path the guard recorded this plugin
+creating (a ledger at `.git/code-critic-worktrees`, written when it sees `worktree add`),
+**never** with `--force`. Two invariants that "who runs git" cannot express: a review may
+destroy only the worktree it created, and needing `--force` means there is work here worth
+asking a human about, so force is never delegated. The worker playbooks (fetch, worktree
+add, commit, push, comment posting) touch none of it, so the flows pay nothing.
 
 ---
 

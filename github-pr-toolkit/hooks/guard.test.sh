@@ -180,6 +180,83 @@ check 2 'wrapped read blocked ASSESSING (by design)' "$(bash_input '"bash -c \"g
 rm -f "$SANDBOX/.git/code-critic-S1.lock" "$SANDBOX/.git/code-critic-S1.assessing"
 
 # ---------------------------------------------------------------------------
+# WORKER-SCOPED DESTRUCTION GATE (third tier). The two tiers above gate WHO runs
+# a command; this one gates WHAT it does, because delegation laundered them: the
+# orchestrator, blocked from `git worktree` by the armed tier, wrote
+# `git worktree remove --force <a worktree it did not create>` into a
+# critic-worker dispatch, where nothing reliably shows it to a human first. Every
+# case below is that failure or a variant of it.
+agent_input() { printf '{"tool_name":"Bash","tool_input":{"command":%s},"agent_id":"w1","agent_type":"%s","cwd":"%s","session_id":"S1"}' "$1" "$2" "$SANDBOX"; }
+LEDGER="$SANDBOX/.git/code-critic-worktrees"
+printf 'S1\t%s\n' "$SANDBOX/seeded/pr-1" > "$LEDGER"
+printf 'S1\t%s\n' "$SANDBOX/my wt/pr-2" >> "$LEDGER"
+
+echo "=== the exact failure: forced removal, and removal of what we did not create ==="
+check 2 'worker: worktree remove --force (recorded path — force is still denied)' "$(agent_input "\"git worktree remove --force $SANDBOX/seeded/pr-1\"" critic-worker)"
+check 2 'worker: worktree remove -f'            "$(agent_input "\"git worktree remove -f $SANDBOX/seeded/pr-1\"" critic-worker)"
+check 2 'worker: remove an UNRECORDED worktree' "$(agent_input "\"git worktree remove $SANDBOX/someone-elses-branch\"" critic-worker)"
+check 2 'worker: remove with no path'           "$(agent_input '"git worktree remove"' critic-worker)"
+check 2 'worker: remove a RELATIVE path'        "$(agent_input '"git worktree remove .claude/worktrees/pr-1"' critic-worker)"
+check 2 'worker: worktree prune'                "$(agent_input '"git worktree prune"' critic-worker)"
+check 2 'worker: force via git -C global opt'   "$(agent_input "\"git -C $SANDBOX worktree remove --force $SANDBOX/seeded/pr-1\"" critic-worker)"
+check 2 'worker: force inside bash -c wrapper'  "$(agent_input "\"bash -c \\\"git worktree remove --force $SANDBOX/seeded/pr-1\\\"\"" critic-worker)"
+check 2 'worker: rm -rf instead of git'         "$(agent_input "\"rm -rf $SANDBOX/seeded/pr-1\"" critic-worker)"
+check 2 'worker: rmdir'                         "$(agent_input "\"rmdir $SANDBOX/seeded/pr-1\"" critic-worker)"
+check 2 'worker: find -delete'                  "$(agent_input "\"find $SANDBOX/seeded -name pr-1 -delete\"" critic-worker)"
+
+echo "=== removal IS allowed for a worktree this plugin recorded creating ==="
+check 0 'worker: remove a recorded path'        "$(agent_input "\"git worktree remove $SANDBOX/seeded/pr-1\"" critic-worker)"
+check 0 'worker: remove a recorded path with a SPACE (quoted)' "$(agent_input "\"git worktree remove \\\"$SANDBOX/my wt/pr-2\\\"\"" critic-worker)"
+check 0 'worker: worktree add (the one creation)' "$(agent_input "\"git fetch origin pull/9/head:cc-pr-9 && git worktree add $SANDBOX/fresh/pr-9 cc-pr-9\"" critic-worker)"
+# THE LEDGER ROUND-TRIP: the add above must have recorded the path, so this
+# remove — identical in shape to the denied one two cases up — now passes. This is
+# the whole mechanism; if recording breaks, CLEANUP starts failing mid-review.
+grep -q "$SANDBOX/fresh/pr-9" "$LEDGER" \
+  && { pass=$((pass+1)); printf 'ok    (ledger) worktree add was recorded\n'; } \
+  || { fail=$((fail+1)); printf 'FAIL  worktree add was NOT recorded in the ledger\n'; }
+check 0 'worker: remove the path the add just recorded' "$(agent_input "\"git worktree remove $SANDBOX/fresh/pr-9\"" critic-worker)"
+
+echo "=== other destructive git, denied to this plugin's own agents ==="
+check 2 'worker: reset --hard'          "$(agent_input '"git reset --hard origin/main"' critic-worker)"
+check 2 'worker: clean -fd'             "$(agent_input '"git clean -fd"' critic-worker)"
+check 2 'worker: push --force'          "$(agent_input '"git push --force origin cc-pr-9"' critic-worker)"
+check 2 'worker: push --force-with-lease' "$(agent_input '"git push --force-with-lease origin cc-pr-9"' critic-worker)"
+check 2 'worker: push +refspec'         "$(agent_input '"git push origin +HEAD:refs/heads/main"' critic-worker)"
+check 2 'worker: push --delete'         "$(agent_input '"git push origin --delete cc-pr-9"' critic-worker)"
+check 2 'worker: commit --amend'        "$(agent_input '"git commit --amend -m x"' critic-worker)"
+check 2 'worker: branch -D'             "$(agent_input '"git branch -D cc-pr-9"' critic-worker)"
+check 2 'worker: checkout'              "$(agent_input '"git checkout main"' critic-worker)"
+check 2 'worker: restore (discards work)' "$(agent_input '"git restore src/app.ts"' critic-worker)"
+check 2 'worker: rebase'                "$(agent_input '"git rebase origin/main"' critic-worker)"
+check 2 'github-worker gets the same gate' "$(agent_input '"git reset --hard"' github-worker)"
+
+# The reviewer half. isReviewerSafeBash refuses outbound git and redirection, but
+# `git clean` / `git reset` sit inside its allowed heads — the same laundering
+# through a different door, so the gate covers reviewers too. Asserted as rc=2
+# (an active block), NOT merely not-granted, since not-granted would also pass if
+# the case fell through to the permission layer for an unrelated reason.
+echo "=== review subagents are covered too (they are this plugin's agents) ==="
+check 2 'reviewer: git clean -fd'       "$(agent_input '"git clean -fd"' code-reviewer-general)"
+check 2 'reviewer: git reset --hard'    "$(agent_input '"git reset --hard"' code-reviewer-all)"
+check 2 'reviewer: custom category too' "$(agent_input '"git clean -fdx"' code-reviewer-my-house-rules)"
+
+echo "=== the playbook must survive the gate (false positives cost a stranded review) ==="
+check 0 'worker: plain commit'          "$(agent_input '"git commit -m subject -m body"' critic-worker)"
+check 0 'worker: plain push -u'         "$(agent_input '"git push -u origin HEAD"' critic-worker)"
+check 0 'worker: fetch'                 "$(agent_input '"git fetch origin main"' critic-worker)"
+check 0 'worker: add -A'                "$(agent_input '"git add -A"' critic-worker)"
+check 0 'worker: rev-parse via -C'      "$(agent_input "\"git -C $SANDBOX/seeded/pr-1 rev-parse HEAD\"" critic-worker)"
+check 0 'worker: worktree list'         "$(agent_input '"git worktree list"' critic-worker)"
+# A commit message that TALKS about the denied flags is not a use of them.
+check 0 'worker: --force inside a commit message' "$(agent_input '"git commit -m \"deny worktree remove --force in the guard\""' critic-worker)"
+
+# SCOPE, asserted so it cannot drift into a surprise: this tier covers the agents
+# THIS PLUGIN defines. Any other subagent in the session is somebody else's
+# business and falls through exactly as before.
+check 0 'a non-plugin subagent is out of scope by design' "$(agent_input "\"git worktree remove --force $SANDBOX/someone-elses-branch\"" task-gopher)"
+rm -f "$LEDGER"
+
+# ---------------------------------------------------------------------------
 # FRONTMATTER ASSERTIONS. Everything above tests guard.mjs. But half of "a code
 # review cannot alter code" lives in the agent FILES, not the hook — and a
 # deny-list that silently loses its Write entry fails exactly as quietly as a

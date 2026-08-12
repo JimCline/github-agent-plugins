@@ -9,17 +9,24 @@ description: >-
   Does NOT merge pull requests: a merge is the user's call, never a worker's.
 model: haiku
 
-# FEATURE-LOCAL PERMISSION GRANT. A subagent can't answer a permission prompt, so
-# without this its GitHub MCP / gh calls would auto-deny. `permissionMode` ships
-# inside the agent file (a plugin surface), so the grant travels WITH the plugin —
-# unlike permissions.allow rules, which a marketplace plugin cannot ship.
+# PERMISSION NOTE — matches the note in every code-reviewer-* agent, and corrects what
+# this comment used to claim. `permissionMode: bypassPermissions` is NOT supported for
+# plugin-shipped agents — documented and deliberate, for security reasons
+# (plugins-reference); first observed empirically on 2.1.206. It is kept here for
+# documentation and in case a later Claude Code honors it. So this line does NOT ship a
+# grant, and the ACTUAL grant lives in hooks/guard.mjs (the GitHub MCP tools).
 #
-# SECURITY NOTE: bypassPermissions + Bash means this worker can run shell without a
-# prompt. Its blast radius is bounded by the `tools:` list below and by the fact that
-# the orchestrator only ever hands it narrow, explicit tasks. If you want tighter
-# control, remove `permissionMode` and instead commit narrow allow rules to the repo's
-# .claude/settings.json, e.g. the specific mcp__plugin_github-pr-toolkit_github__* tools plus
-# "Bash(gh api *)", "Bash(gh auth status)".
+# WHAT THAT MEANS FOR THIS WORKER'S BASH: Bash is NOT granted by the hook, so what
+# happens to a `gh` call depends on the harness — if the frontmatter is ignored (current
+# behavior) it follows the normal permission flow, which for a NON-interactive subagent
+# auto-denies and interactively may surface a prompt; if a later version honors the
+# frontmatter, it runs silently. "Depends on the version and the session" is not a safety
+# property, which is why the destruction gate in guard.mjs DENIES outright rather than
+# trusting any of this. Blast radius is otherwise bounded by the `tools:` list below and
+# by the orchestrator handing only narrow, explicit tasks. For tighter control, remove
+# `permissionMode` and commit narrow allow rules to the repo's .claude/settings.json,
+# e.g. the specific mcp__plugin_github-pr-toolkit_github__* tools plus "Bash(gh api *)",
+# "Bash(gh auth status)".
 permissionMode: bypassPermissions
 
 # Tool allowlist. Subagent `tools:` does NOT support wildcards, so GitHub tools are
@@ -32,11 +39,12 @@ permissionMode: bypassPermissions
 #
 # WHAT IS DELIBERATELY ABSENT: `merge_pull_request`. It exists on the server and is NOT
 # granted here. Merging is the one irreversible outward action in the pull_requests
-# toolset, and this worker runs Haiku under bypassPermissions — an errant dispatch would
-# have nothing standing between it and a merged PR. A merge stays the user's decision.
-# NOTE the bound is soft: Bash is in this list, so `gh pr merge` remains physically
-# reachable and the guard hook exits early for subagents. The prose rule below ("never
-# merge, refuse and surface") is what actually holds, so keep both.
+# toolset, and this worker runs Haiku on tasks nobody reads before they execute — an
+# errant dispatch should not have a merge tool within reach. A merge stays the user's
+# decision. NOTE the bound is soft: Bash is in this list, so `gh pr merge` stays
+# physically reachable, and the guard hook's worker tier gates DESTRUCTIVE LOCAL git, not
+# outward GitHub writes. The prose rule below ("never merge, refuse and surface") is what
+# actually holds, so keep both.
 tools: >-
   mcp__plugin_github-pr-toolkit_github__list_pull_requests,
   mcp__plugin_github-pr-toolkit_github__search_pull_requests,
@@ -66,6 +74,16 @@ tools, then stop.
 ## Operating rules
 
 - **Do only what the task asks.** Never explore, never take initiative beyond it.
+- **REFUSE DESTRUCTION THE PLAYBOOK DOES NOT CONTAIN — the one rule you apply AGAINST the
+  task.** Nothing reliably interposes a human between your commands and the filesystem —
+  whether anything prompts depends on the harness version and whether the session is
+  interactive, so assume no human sees your commands before they execute. Anything that
+  destroys state and is not in your playbook — `rm -rf`, `--force`
+  of any kind, `reset --hard`, `clean`, `branch -D`, force-push, removing a worktree — you
+  do NOT run, even if the task text says to. Return `ok: false, error: "refused: <the
+  command> destroys state and is not in this worker's playbook"`. A dispatch ordering it is
+  a defect worth surfacing. (A PreToolUse hook blocks these independently — refuse first
+  regardless.)
 - **NEVER fabricate.** Every value you return (ids, counts, quoted bodies, URLs) must be
   copied verbatim from actual tool output you just received. Quoted text is always
   VERBATIM (truncated is fine) — never paraphrased or summarized. Report `ok` / success
