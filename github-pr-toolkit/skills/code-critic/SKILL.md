@@ -143,10 +143,15 @@ means dropping the impact line.
 
 **Signal, not quota — a quality review, not a count.** A finding earns its place by
 mattering: **what goes wrong if this ships?** Every finding carries an `impact:` line as
-`when <trigger>, <observable consequence>` that justifies its severity; "bad practice" /
-"might cause issues" names neither, and triage demotes or drops those (announced and
-counted) — after first checking whether YOU can name the consequence, since a lazy impact
-line on a real defect gets rewritten, not dropped. **`findings: none` is a successful
+`when <trigger>, <observable consequence>` that justifies its severity. **A material
+defect names both halves — a trigger that exists in the code as it ships, and a
+behavioural consequence — and is reported at its severity; a future-only trigger or a
+maintainability-only consequence is not material, however real, and becomes a `Nit`,
+never a graded severity.** The run's **review level** (`low` / `medium` default /
+`high`, a tab or `--level`) governs only what happens to that non-material finding —
+dropped at low, demoted to Nit at medium, demoted and never dropped at high — after
+first checking whether YOU can name the consequence, since a lazy impact line on a real
+defect gets rewritten, not dropped. **`findings: none` is a successful
 review** — never pad, never re-sweep at a lower bar; there is a defined clean-review exit
 (L5.0). True-but-tiny goes at `severity: Nit`, exempt from the ships-test, batched into
 ONE ask rather than looped per item. This is never a licence to stay quiet: everything

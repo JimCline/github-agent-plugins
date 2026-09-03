@@ -1,6 +1,6 @@
 ---
 description: Adversarial code review of a local diff or a GitHub PR — the FIRST wizard question declares the run's outcome (fix approved findings, or only comment/report them — the review itself is identical either way), then the user picks review categories (general, security, design, adherence, performance, tests), a reviewer (parallel category subagents, the advisor, the main agent, or — as a first-class Other answer when one is live in this repo — an agent-hierarchy durable agent), and the model those subagents run on (session default, Opus, Sonnet, or Fable — one model across every category); findings are triaged by severity and acted on issue-by-issue in the declared mode. GitHub writes and commits/pushes go through a Haiku worker; diffs you generate yourself.
-argument-hint: "[PR number/URL, or --branch <ref> / --against <ref> for local — optional]"
+argument-hint: "[PR number/URL, or --branch <ref> / --against <ref> for local — optional] [--level low|medium|high]"
 ---
 
 You are the **ORCHESTRATOR** (the high-reasoning main model) for an adversarial code
@@ -132,6 +132,12 @@ offer of the next run in this repo.
 If it passes `--branch`/`--against` or nothing → **Local flow** (default). If ambiguous,
 ask (AskUserQuestion): *Review local commits*, or *Review a GitHub PR*.
 
+**0.2b Review level from the invocation.** `--level low|medium|high` sets the review
+level for this run and skips the level tab; so does a level named plainly in the
+message (*"low level review"*, *"be strict — level low"*). Anything else, including an
+unrecognized value, leaves the tab to be asked. The level is defined in L4's
+**REVIEW LEVEL**; record it now so every later step can read it.
+
 **0.3 Declare the outcome — the FIRST wizard question.** Before any other review
 configuration, the user decides what an approved finding will BECOME. This question is
 first for a reason: the most common drift in this flow is the reviewer-turned-fixer —
@@ -177,6 +183,21 @@ Ask (AskUserQuestion), unless `$ARGUMENTS` already specified it:
 - **`main` (default)** — commits on this branch not in `main`.
 - **Another branch** — let them name it.
 - **A commit/tag** — let them paste a ref.
+
+**Tab 3 of this same ask — "Review level".** *"What happens to a finding that isn't a
+material defect? (wording and the grade of real defects are unaffected — see L4 REVIEW
+LEVEL)"* Three options, Medium first and marked default:
+- **Medium (default)** — material defects (a trigger that exists in the code as it
+  ships + a behavioural consequence) are reported at their severity; anything else is
+  demoted to Nit. Uncertain findings kept and marked.
+- **Low — fewer, high-confidence** — material defects only; non-material findings and
+  Nits are dropped, not demoted; uncertain or newly-exposed findings survive only at
+  High/Critical.
+- **High — nothing dropped** — same bar as Medium, but nothing is ever dropped for a
+  weak impact line: it becomes a Nit instead. Still no opinion at a graded severity.
+
+Skip this tab only when 0.2b already recorded a level. Never drop it because the base
+was given in `$ARGUMENTS` — a tab the flow stops asking is how knobs go missing.
 
 ## L2 — Generate the diffs (yourself)
 Do this with your own read-only git — do NOT delegate it:
@@ -497,8 +518,12 @@ above it. The trigger is the point: it is checkable against the diff, where an a
 is not. *"when the list is empty, this throws"* and *"when a variant is added to this
 switch, the audit-log write is silently skipped"* are impacts. *"might cause issues"*,
 *"not ideal"*, *"bad practice"* name neither a trigger nor a failure, and are the tell
-that no consequence was found. **A conditional consequence is still a consequence** —
-"could be a problem someday" is noise only when the someday is unnamed.
+that no consequence was found. **A material defect names both halves: a trigger that
+exists in the code as it ships, and a behavioural consequence.** A consequence that
+needs a change nobody has made ("when a variant is added to this switch") is real but
+not material — it is reported as a `Nit`, never at a graded severity. So is "harder to
+extend" with no wrong behaviour behind it. See REVIEW LEVEL below for what each level
+does with these.
 
 **Finding nothing is a successful review.** `findings: none` on a clean diff is a
 complete, correct result — not a failed dispatch, and not a cue to lower the bar and
@@ -514,6 +539,11 @@ the list look weightier — `Low` is load-bearing. And `Nit` is not where a doub
 finding goes to survive: it is for things that are true and tiny, not things you are
 unsure of.
 
+Two kinds of thing carry `Nit`: the true-and-tiny (`impact: nit — no shipping
+consequence`) and the **non-material demotion** (`impact: nit — non-material:
+future-only trigger` / `non-material: maintainability-only` / `non-material: no
+consequence named`). Write which. At level **low** neither is emitted.
+
 **This is not a licence to stay quiet.** The bar governs what counts as a finding; it is
 never a reason to withhold or soften one that clears it. Never drop a real defect to keep
 a list short, and never grade a severity down to seem less noisy — see **ALWAYS SHOW
@@ -525,6 +555,73 @@ REAL; *impact* is about whether it MATTERS. A finding you cannot confirm from th
 but that would be serious if true stays in the list, marked uncertain (L4's opening
 rule) — state its impact conditionally: what goes wrong *if it is real*. A finding you
 are certain about that breaks nothing is the one to drop.
+
+Materiality is a third axis, and it is the one the level moves: an uncertain finding
+can be material ("if this lock is not held, two writers corrupt the index"); a certain
+one can be non-material. The level sets how serious an uncertain finding must be to
+stay — any severity at medium and high, High or above at low.
+
+### REVIEW LEVEL — what a non-material finding becomes (applies to ALL review paths — subagents, advisor, durable agent, and you)
+
+The run carries a **review level** — `low`, `medium` (default), or `high` — chosen in
+L1/G1.1 or by `--level`. It answers one question and does nothing else: **what happens
+to a finding that is not a material defect.** It never changes wording (`review_tone`
+owns that), never re-grades a material finding (ALWAYS SHOW SEVERITY), and never
+changes what is IN SCOPE.
+
+**A material defect** is a finding whose `impact:` names a **reachable-now trigger**
+— an input, caller, state, or code path that exists at the reviewed HEAD, cited — AND
+a **behavioural consequence** — wrong output, data loss, a security hole, a crash, a
+race, a silent failure, a misleading error, an uncaught regression, a contract callers
+will predictably misuse, a project directive contradicted. Both halves, or it is
+**non-material**: a future-only trigger ("when someone adds…", "if this is ever called
+concurrently"), a maintainability-only consequence ("harder to extend", "less
+clean"), or a line that names neither. Uncertainty does not bear on materiality.
+
+| Axis | low | medium | high |
+|---|---|---|---|
+| Material defect | its severity | its severity | its severity |
+| Non-material finding | dropped | demoted to `Nit` with `impact: nit — non-material: <reason>`; a line naming *nothing* may be dropped | demoted to `Nit` — never dropped |
+| True-and-tiny Nits | not emitted | allowed | allowed |
+| Uncertain findings | High/Critical only | any severity, marked | any severity, marked |
+| `newly-exposed-by-diff` | High/Critical only, exposure stated | kept, exposure stated | kept, exposure stated |
+
+**Medium, in one sentence:** *material defects at their severity; everything else is
+a Nit.* This is the default, and it is where opinion used to leak: "I'd have written
+it differently" always arrives dressed as a future-only trigger or a maintainability
+consequence, and at medium both are now Nits — visible, batched at the bottom, never
+weighing on the list. **Low, in one sentence:** *material defects only; a finding not
+both certain and introduced-by-diff survives only at High or above; nothing else is
+shown.* **High** is medium with no drops at all — the empty-impact finding medium may
+discard is kept as a Nit.
+
+**This removes nothing that clears the bar.** A Critical is a Critical on a list of
+one, at every level; `findings: none` is a complete result at every level; `high` is
+not permission to sweep again.
+
+**The level is applied twice, and the second time is the one that counts.** Every
+reviewer dispatch carries a `level:` line (see the dispatch blocks below) and the
+reviewer applies the table at emission — so it does not spend tokens on findings the
+run will demote or discard. Then L5 applies the same table to the merged list,
+whichever path produced it: a reviewer that ignored its line, an advisor pass, a
+durable agent, your own pass. L5's application is authoritative; the reviewer's is an
+economy.
+
+**The `level:` line, per level — every reviewer dispatch carries `level: <x>` plus
+the ONE matching bullet below, copied verbatim, on the line after `advisor:`.** Do not
+paraphrase it and do not send the word alone: the reviewer's definition holds the
+medium bar, but low and high exist only in this text.
+- `low`: *Material defects only — a reachable-now trigger (cite it at HEAD) AND a behavioural consequence; anything else, drop. No Nits. Uncertain or `newly-exposed-by-diff` findings only at High/Critical. Return `level-dropped: <n>`.*
+- `medium`: *A finding whose impact names a reachable-now trigger (cite it at HEAD) AND a behavioural consequence is reported at its severity. Anything else — future-only trigger, maintainability-only consequence — is `severity: Nit` with `impact: nit — non-material: <reason>`; a finding you can name no consequence for at all, drop. Return `level-demoted: <n>`, `level-dropped: <n>`.*
+- `high`: *As medium, but never drop: a finding you can name no consequence for is `Nit` with `impact: nit — non-material: no consequence named`. Return `level-demoted: <n>`.*
+
+**Level actions are announced and counted, like scope and impact drops.** Never
+silent. The L5 note names the level and the reason class: *"dropped 2 for scope; level
+(medium): 3 demoted to Nit (non-material), 0 dropped"* or *"level (low): 4 dropped —
+2 non-material, 1 nit, 1 uncertain-below-High"*. Reason classes are exactly:
+`non-material`, `nit`, `uncertain-below-High`, `newly-exposed-below-High`. A reviewer
+that pre-applied its `level:` line reports counts only (`level-demoted: <n>`,
+`level-dropped: <n>`) so the stats stay honest without shipping the discarded findings.
 
 **STOP — checkpoint before ANY subagent dispatch.** Two answers must be in hand, and a
 missing one means an ask went out incomplete — not that you may fill the gap yourself:
@@ -548,8 +645,9 @@ and (2) — no model parameter to pass, nothing to fan out — but never from (3
 
 **If ONE subagent for all categories was chosen:** dispatch a single
 `code-reviewer-all` agent. Everything about the dispatch matches the fan-out below —
-same absolute path, same base spec, same changed-file list, same `advisor:` line, same
-Tab 4 `model` parameter (omit it only for **Default**) — with two additions:
+same absolute path, same base spec, same changed-file list, same `advisor:` line,
+same `level:` line, same Tab 4 `model` parameter (omit it only for **Default**) — with
+two additions:
 - **The category list, each slug WITH its focus.** The agent holds the built-in lenses,
   but it must be told which ones the user selected, and a **custom** category's focus
   exists only in its own file — `Read` it and pass the checklist text inline. Without
@@ -576,8 +674,8 @@ prompt and poll a mailbox — they execute nothing in this repo). **The `.assess
 marker STAYS ARMED throughout — never lift it to dispatch or collect.** Use the
 `pane.mjs` path your durable roster names. Everything about the dispatch matches the
 all-categories agent above — same absolute repo (or worktree) path, same base spec, same
-changed-file list, same adherence hand-off, same roll-call demand — with these
-differences:
+changed-file list, same adherence hand-off, same roll-call demand, same `level:` line —
+with these differences:
 
 - **Pass EVERY selected category's checklist inline, built-ins included.** The durable
   agent is its created role — a general validator, not one of the plugin's category
@@ -590,7 +688,9 @@ differences:
   reason over the diff only; do not run tests, execute code, or diagnose — directly or
   via any runner — and report a finding that needs verification as *uncertain —
   confirming needs `<X>`*. Tell it to compute the diff itself with read-only
-  `git -C "<absolute path>"` against the base spec you name.
+  `git -C "<absolute path>"` against the base spec you name. The `level:` bullet rides
+  in the prose like everything else — the durable session holds none of L4, so paste
+  the bullet, not just the word.
 - **Structure the reply for the transport.** Ask for `## TL;DR` opening with the
   roll-call (one line per category), then one `## <category>` section holding that
   lens's findings in the fixed shape (severity, `file:line`, `impact:`, `scope:`,
@@ -623,7 +723,7 @@ the agents list), **respecting L3.0's cap**:
 - **cap = 1** — one dispatch, wait, next. Still N separate reviewers with N independent
   verdicts; only the concurrency changed.
 
-Say the plan in one line before you start (`"6 of 9 reviewers in flight, 3 queued"`), and
+Say the plan in one line before you start (`"6 of 9 reviewers in flight, 3 queued, level medium"`), and
 never silently exceed the cap — a cap the user set and the flow ignores is worse than no
 cap, because they think the question was answered. **Set the Agent
 tool's `model` parameter on EVERY one of these dispatches to the Tab 4 alias** (`opus` /
@@ -638,7 +738,9 @@ dispatches; tell the user that's what happened. Each dispatch is minimal and sel
 the repo (or worktree) absolute path, the exact base spec you diffed
 (`origin/<base>...HEAD` or `<ref>...HEAD`), the changed-file list from your `--stat`,
 the **advisor directive** from Tab 3 (`advisor: consult` or `advisor: none` — one
-line, always present so the agent never guesses), and — for the adherence agent — the
+line, always present so the agent never guesses), the **level line** from L1/G1.1
+(`level: <x>` plus its bullet from REVIEW LEVEL — one line, always present so the
+agent never guesses), and — for the adherence agent — the
 directive files found (or the infer/user-guidance outcome) from L3. Each agent recomputes the diff with the same read-only git and returns
 findings in the fixed shape its definition specifies.
 
@@ -666,10 +768,12 @@ introduced-by-diff, or newly-exposed-by-diff with the exposure stated.** This pa
 no subagent return to cross-check, so the discipline has to hold as you review: before
 writing a finding, name which changed line puts it in scope. If delegating to the
 advisor, tell it the same — static review, scoped to the change, **held to the
-WORTH-REPORTING bar above** (impact line included), surface uncertainty, do not execute
-anything. If YOU review, the same tier rule from Tab 3 applies to you — you are the
-session model, so consult only when the advisor is genuinely the stronger reader, or when
-the user or `advisor_policy` says to. When you do consult (and an advisor exists):
+WORTH-REPORTING bar above** (impact line included) **at the run's level — paste the
+`level:` line and bullet**, surface uncertainty, do not execute anything. If YOU
+review, you hold yourself to the `level:` bullet at emission and again at L5 — the
+same two-pass rule as every other path. The same tier rule from Tab 3 applies to you
+— you are the session model, so consult only when the advisor is genuinely the
+stronger reader, or when the user or `advisor_policy` says to. When you do consult (and an advisor exists):
 take your borderline and high-severity findings to the advisor before finalizing
 and record its concurrence/dissent per finding.
 
@@ -710,12 +814,30 @@ the same problem reframed under a second lens — merge into one finding carryin
 category tags.
 
 **Impact filter — demote or drop, announced and counted.** A finding whose `impact:`
-names no trigger and no failure has not cleared the bar (Nit is exempt; see L4). Before
+names no trigger and no failure has not cleared the bar (Nit is exempt; see L4) — and
+REVIEW LEVEL's gate below decides whether it drops or demotes. Before
 acting on that, ask whether YOU can name the consequence: a lazy impact line on a real
 defect gets its line rewritten, not the finding dropped. Only if no one can name a
 consequence does it demote to `Nit` or drop — demotions are announced per ALWAYS SHOW
 SEVERITY, never silent, and drops are counted in the same one-line note as scope drops
 ("dropped 2 for scope, 1 for impact").
+
+**Level gate — after the impact filter, before ranking.** Apply REVIEW LEVEL's table
+to the merged list regardless of which path produced it. First classify each
+non-Nit finding: **material** (reachable-now trigger AND behavioural consequence, both
+checkable against the diff) or **non-material**. Then, at **medium**: demote every
+non-material finding to `Nit`, rewriting its impact line to `nit — non-material:
+<future-only trigger | maintainability-only | no consequence named>`; the impact
+filter's rescue-rewrite still applies first — if YOU can name the reachable-now
+consequence the reviewer missed, write it and the finding is material. Only a finding
+for which no one can name any consequence may be dropped. At **low**: drop every
+non-material finding and every Nit; drop uncertain and `newly-exposed-by-diff`
+findings below High; no rescue rewrite — a real defect whose reviewer could not make
+material is dropped here and the reviewer's return shows why. At **high**: as medium,
+but nothing drops — the no-consequence finding is a Nit. Count and announce per REVIEW
+LEVEL's reason classes, in the same one-line note as scope drops. The gate's only
+severity change is the non-material demotion to `Nit`, announced per ALWAYS SHOW
+SEVERITY; it never re-grades a material finding.
 
 **L5.0 — If nothing clears the bar, the review is DONE and it succeeded.** Trigger on the
 POST-triage list being empty — whether the reviewers returned nothing, or everything they
@@ -1047,7 +1169,7 @@ measured numbers changes the block's SHAPE (see the collapse rule below), never 
 presence. If you are about to end a review without it, you have made the mistake — the
 same class of miss as sending the L3 ask without its fourth tab.
 
-Four sourcing rules govern every line:
+Five sourcing rules govern every line:
 
 1. **Copy, never estimate.** A token number appears here ONLY if it was carried in a
    dispatch's result metadata (some harnesses append a usage block — e.g.
@@ -1066,7 +1188,11 @@ Four sourcing rules govern every line:
    the tier rule withheld it say so on that line (`withheld — reviewers at top tier`)
    rather than omitting the line: an absent row reads as "didn't happen", and the user
    should be able to tell a cost that was never incurred from one that went unmeasured.
-4. **Capture at RETURN time, not at summary time.** Usage metadata arrives attached to
+4. **State the review level.** End the block — same shape, every exit path — with
+   `Review level: <low|medium|high> (<source: --level | message | tab>) —
+   level-demoted: <n>, level-dropped: <n> (<reason counts>)`. This is a REVIEW LEVEL
+   tally carried forward from L5's gate, not a new measurement.
+5. **Capture at RETURN time, not at summary time.** Usage metadata arrives attached to
    each dispatch's result — and in a long review those results scroll away or get
    compacted long before the summary is written. The moment a result carrying usage
    comes back, note the number in one visible line (`stats: security 38.9k · 41 tools ·
@@ -1084,6 +1210,7 @@ Review stats
   Advisor:          consulted ×3 — tokens not measurable
                     (or: withheld — reviewers at top tier)
   Orchestrator:     session model — not measurable
+  Review level:     medium (tab) — level-demoted: 3, level-dropped: 0 (0 non-material, 0 nit, 0 uncertain-below-High, 0 newly-exposed-below-High)
   Agents: 6 (4 reviewers, 2 workers) · measured total: 169.0k tokens
 ```
 
@@ -1139,15 +1266,30 @@ or native binary, by editing that `.mcp.json`). Note the PAT needs
 the worktree checkout — this is broader than resolve-pr-comments' PAT). Re-run G0 after.
 
 ## G1 — Worktree checkout (delegated, at a location the USER controls)
-**G1.1 Outcome + worktree location — one ask, two tabs.** **Step 0.3's outcome question
-is Tab 1** (comment on the PR / fix on the PR branch / decide after — comment is the
-default and the worktree is needed in every mode, since reviewers read code from it).
-Tab 2 chooses the worktree location (AskUserQuestion; remind about Tab-to-amend):
+**G1.1 Outcome + worktree location — one ask, three tabs.** **Step 0.3's outcome
+question is Tab 1** (comment on the PR / fix on the PR branch / decide after — comment
+is the default and the worktree is needed in every mode, since reviewers read code from
+it). Tab 2 chooses the worktree location (AskUserQuestion; remind about Tab-to-amend):
 - **`.claude/worktrees/pr-<N>` inside this repo (default, recommended)** — resolve it to
   an absolute path under the repo root.
 - **Somewhere else** — let them give a path.
 If the default is chosen, make sure git ignores it locally (no commit needed): append
 `.claude/worktrees/` to `.git/info/exclude` if not already present.
+
+**Tab 3 of this same ask — "Review level".** *"What happens to a finding that isn't a
+material defect? (wording and the grade of real defects are unaffected — see L4 REVIEW
+LEVEL)"* Three options, Medium first and marked default:
+- **Medium (default)** — material defects (a trigger that exists in the code as it
+  ships + a behavioural consequence) are reported at their severity; anything else is
+  demoted to Nit. Uncertain findings kept and marked.
+- **Low — fewer, high-confidence** — material defects only; non-material findings and
+  Nits are dropped, not demoted; uncertain or newly-exposed findings survive only at
+  High/Critical.
+- **High — nothing dropped** — same bar as Medium, but nothing is ever dropped for a
+  weak impact line: it becomes a Nit instead. Still no opinion at a graded severity.
+
+Skip this tab only when 0.2b already recorded a level. Never drop it because the base
+was given in `$ARGUMENTS` — a tab the flow stops asking is how knobs go missing.
 
 **G1.2 Delegate with the EXACT path — one combined dispatch.** Delegate to
 `critic-worker`: *"WORKTREE + EXISTING-COMMENTS task — (1) check out PR #N into a

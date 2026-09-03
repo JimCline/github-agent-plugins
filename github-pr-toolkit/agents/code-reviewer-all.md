@@ -114,6 +114,19 @@ what was examined. Same for any other missing input.
   where a doubtful finding goes to survive. None of this means staying quiet: report
   everything that clears the bar, at its true severity. Uncertain-but-serious stays
   (marked uncertain, per the rule above); certain-but-consequence-free goes.
+- **Material or Nit.** A finding earns a graded severity only as a **material defect**:
+  its `impact:` names a trigger that exists in the code at HEAD (cite it) AND a
+  behavioural consequence (wrong output, data loss, security hole, crash, race, silent
+  failure, misleading error, uncaught regression, misusable contract, directive
+  contradicted). A finding whose trigger needs a change nobody has made, or whose only
+  consequence is maintainability, is **`severity: Nit`** with `impact: nit —
+  non-material: <reason>` — never `Low`. The dispatch's `level:` line adjusts this:
+  `low` — drop non-material findings and Nits, and keep uncertain or
+  `newly-exposed-by-diff` findings only at High/Critical; `high` — never drop, a
+  finding with no nameable consequence is a Nit. **No `level:` line means `medium`: the
+  rule as written here.** Return `level-demoted: <n>` and `level-dropped: <n>` — counts
+  only, never the discarded findings. The level never re-grades a material finding and
+  never widens scope.
 - **Use memory if this session has it — read before, write after.** Check for any
   memory/knowledge tooling available to you (an MCP memory server, a project memory
   store, a notes/insight tool — names vary; you inherit whatever the session has).
@@ -200,6 +213,8 @@ findings:
   scope: introduced-by-diff | newly-exposed-by-diff
   certainty: confirmed-from-diff | uncertain — confirming needs <X>
   advisor: concurs | dissents — <one line> | unavailable   # only when consulted
+level-demoted: <n>   # optional — non-material findings you demoted to Nit
+level-dropped: <n>   # optional — non-material findings/Nits you dropped
 ```
 If nothing found anywhere: the `roll-call` with every category at `none`, then
 `findings: none`. Do not omit the roll-call — a clean review still has to show which

@@ -236,6 +236,35 @@ reads back.
 Reviewers are never told the tone — subagents return factual findings and the orchestrator
 renders. So the tone can change mid-review without re-running anything.
 
+### Review level
+
+A per-run **review level** — `low` / `medium` (default) / `high` — chosen as a tab
+alongside the outcome question, or set with `--level low|medium|high`. It answers one
+question: **what happens to a finding that is not a material defect?** It never changes
+wording (`review_tone` owns that) and never re-grades a material finding.
+
+A **material defect** names both halves: a **reachable-now trigger** (an input, caller,
+state, or code path that exists at the reviewed HEAD, cited) AND a **behavioural
+consequence** (wrong output, data loss, a security hole, a crash, a race, a silent
+failure, a misleading error, an uncaught regression, a misusable contract, a directive
+contradicted). Both, or it is **non-material** — a future-only trigger, a
+maintainability-only consequence, or a line naming neither — and `medium`, the default,
+is where the previous behavior changed: a non-material finding used to be reported at
+`Low`/`Medium`; it is now `Nit` with `impact: nit — non-material: <reason>`.
+
+| Axis | low | medium | high |
+|---|---|---|---|
+| Material defect | its severity | its severity | its severity |
+| Non-material finding | dropped | demoted to `Nit`; an empty impact line may be dropped | demoted to `Nit` — never dropped |
+| True-and-tiny Nits | not emitted | allowed | allowed |
+| Uncertain findings | High/Critical only | any severity, marked | any severity, marked |
+| `newly-exposed-by-diff` | High/Critical only, exposure stated | kept, exposure stated | kept, exposure stated |
+| Scope rule | unchanged | unchanged | unchanged |
+| Severity of a material finding | never re-graded | never re-graded | never re-graded |
+
+Nothing that clears the bar is ever removed at any level, and a material finding's
+severity and wording are unaffected.
+
 ### Ephemeral comments
 
 Part of **General Review**. A code comment's audience is the *next person to read the
@@ -281,7 +310,8 @@ inclined to justify its own dispatch.
 Genuine small things live at `severity: Nit`, the one severity exempt from the ships-test.
 Nits are **batched** — one collapsed block, one collective ask (apply all / skip all /
 pick), counted separately from findings — instead of each costing a task, a prompt, and a
-drafted comment. Per-item cost is what made valid nits feel like noise.
+drafted comment. Per-item cost is what made valid nits feel like noise. The level's
+non-material demotions batch in with the true-and-tiny Nits — same block, same ask.
 
 None of this is licence to stay quiet. The bar decides what counts as a finding; it never
 justifies withholding or softening one that clears it, and severity is never graded down
