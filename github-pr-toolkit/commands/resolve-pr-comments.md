@@ -245,6 +245,16 @@ not a fallback: expect the user to name a subset to research now ("just the thre
 `api/`"), reorder the list, or drop threads they don't care about. Honor whatever they
 say, then re-ask this question for whatever remains.
 
+**A live peer is also a first-class Other answer.** Load the `peer-dispatch` skill and run
+its availability and discovery steps; when it finds a live peer rooted here (an
+agent-hierarchy roster peer, an agent-teams teammate this session spawned, or a Herdr pane
+agent), **say so in the question text** — name · role · kind · idle|busy — and treat
+*Other: "<name>"* as **"One brief, all threads, to <name>"**: the whole working set (or the
+subset the user names) goes to the peer in one request, per Step 4's peer bullet. State
+the tradeoff: one reasoner holds every thread (like *I'll assess them all myself*, but off
+this context), no per-thread parallelism, and it assesses as whatever role it was created
+as. 3.5.2a (the cap) and 3.5.3 (the model) do not apply to a peer — say so in one line.
+
 **3.5.2a Confirm a large fan-out (> 6 threads).** If the user chose *Research all of
 them* and the working set is **more than 6** threads, **stop and ask again** before
 dispatching anything. Six is the ceiling this plugin has precedent for — it is exactly
@@ -328,6 +338,20 @@ first hard invariant, not a shortcut.
   dispatch the next. Never run ahead of the user; a thread they resolve early is a
   thread you never assess.
 - **I'll assess them all myself** — dispatch nothing; reason inline.
+- **A peer** (Other: "<name>") — load the `peer-dispatch` skill and follow it. Slug
+  `resolve-pr-<n>`; run its collision check (§3) before briefing. ONE request (its §5)
+  carrying: the repo absolute path; every thread in the working set (`thread_id`, `path`,
+  `line`, `author`, root comment body — or the handoff JSON path plus the list of
+  `thread_id`s to work); `advisor: none`; the skill's §7 contract verbatim; and the
+  `thread-assessor` output contract — `Read agents/thread-assessor.md` and paste its
+  fix/reject/discuss judging rules and its return shape, so each thread comes back as
+  `thread_id`, `file: <path>:<line>`, `claim`, `action: fix | reject | discuss`,
+  `rationale`, `detail` (fix only), `certainty: confirmed-from-code | uncertain — <what
+  would settle it>`. Reply shape: `## [1] status`, then `## TL;DR` = roll-call of
+  `thread_id`s assessed / not-assessed, then one `## <thread_id>` section per thread
+  holding that proposal. Task-list tracking as *Research all* (all `pending`;
+  `[assessed:…]` prefixes as proposals land). The cross-check below is unchanged and
+  applies.
 
 **Every dispatch carries:** the repo absolute path; the thread itself (`thread_id`,
 `path`, `line`, `author`, root comment body — or, under the file handoff, the JSON path
@@ -339,7 +363,8 @@ plus the `thread_id` to work, so the agent reads only its own thread); and the
 chosen at 3.5.3 — `opus` / `sonnet` / `fable`. That parameter takes **bare aliases
 only** (not full model IDs like `claude-opus-5`), and an alias tracks the newest model
 in its family rather than pinning a generation. For **Default (model I'm using)**, omit
-the parameter entirely so the assessor inherits your model.
+the parameter entirely so the assessor inherits your model. (A peer brief carries the
+same, minus the model parameter.)
 
 **Cross-check what comes back**: every returned `thread_id` must be one you dispatched —
 drop and note anything that isn't, and never let a returned proposal invent a file or
@@ -426,6 +451,48 @@ For every thread whose decision is a code **fix** (approved by the user, nothing
   Work on the PR's branch (or the project's conventional fixup branch).
 - Push.
 Run the project's tests/build if present, and report the results.
+
+**Hand the fixes to a peer instead?** When the `peer-dispatch` skill finds a live peer
+rooted here whose role is `implementor` (or the user names one), ask (AskUserQuestion):
+*Implement here (default)* / *Hand to <name>*. Peer path: slug `fix-pr-<n>`; run the
+skill's collision check; **record `git rev-parse HEAD` before briefing** (the cross-check
+below needs it); the brief carries **only** the user-approved `fix` threads — each with
+its `thread_id`, its exact resolution note, and the files/functions from the proposal —
+plus the repo absolute path, the PR branch name, and these rules, verbatim:
+- Edit the working tree on the PR branch; commit with messages referencing the PR and
+  thread; run the project's tests/build if present and report the results.
+- **Git you may run:** `git -C "<abs path>" status|diff|log|show|add|commit` on the PR
+  branch you were given, and nothing else. **Denied, whatever the flags:** `reset` (any
+  mode — `--soft`/`--mixed` rewrite what this session will push), `clean`, `checkout`,
+  `switch`, `restore`, `rebase`, `merge`, `cherry-pick`, `stash`, `tag`, `config`,
+  `fetch`, `pull`, `push`, `remote`, `branch` (no new branches — commit on the branch you
+  were given, never create, rename, or delete one), any `git worktree`, `commit --amend`,
+  `commit --no-verify`, recursive or forced `rm`. No network git of any kind and no GitHub
+  I/O: this session pushes and posts. **Files you may not edit:** anything under
+  `.claude/`, `.git/`, hook scripts, settings files, `CLAUDE.md`, or any agent/plugin
+  configuration — a fix that needs one of those is reported as `blocked: <reason>`, not
+  made. If a step needs a denied action, stop and report `blocked:`; do not work around it.
+Report shape: `## [1] status`, then `## TL;DR` = per thread_id `fixed` | `not-fixed:
+<reason>`, the commit SHAs, the files touched, and the test result.
+
+**Cross-check the peer's report against the tree BEFORE pushing — fixes get the same
+provenance check reviews get.** Four tests, all with read-only git, all must pass:
+1. `git rev-parse --abbrev-ref HEAD` is still the PR branch you named in the brief.
+2. The commit SHAs the report lists are exactly the new commits: `git log --format=%H
+   <pre-brief HEAD>..HEAD` — no extra commits, none missing.
+3. `git status --porcelain` is empty — nothing uncommitted, nothing untracked left behind.
+4. Every file in `git diff --name-only <pre-brief HEAD>..HEAD` is one named in an approved
+   proposal's files for a thread in the brief (the `[approved:fix]` task descriptions).
+Any mismatch: **do not push.** Present exactly what differs (branch, unexpected SHA, dirty
+path, file outside the approved set) to the user with AskUserQuestion — *Push anyway* /
+*Discard the peer's commits* (`git reset --hard <pre-brief HEAD>` only on their explicit
+choice) / *Stop here* — and continue only on their answer. A report you cannot reconcile
+with the tree is treated like a fabricated finding: the tree is the evidence, the report is
+a claim.
+
+Then THIS session pushes (as above) and continues to Step 7. The laundering test holds:
+nothing is armed during resolve, so every action asked of the peer is one this session
+could run itself.
 
 **Task list:** set a thread's task `in_progress` while you make its edit and return it to
 `pending` with the subject prefix `[fixed]` and the commit SHA appended to the

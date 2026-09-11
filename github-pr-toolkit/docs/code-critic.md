@@ -30,6 +30,20 @@ independently" are both first-class answers, just not tab slots, since
 | **The advisor** | one `advisor` pass | no subagent return to cross-check, so scope discipline has to hold inline |
 | **The main agent** | none — reviews inline | spends orchestrator context on reviewing |
 
+#### Peer reviewers
+
+A live **peer agent** rooted in this repo is a first-class *Other* answer on the Reviewer
+tab. Three kinds: an agent-hierarchy roster peer (a live Claude session), an agent-teams
+teammate this session spawned, or a Herdr-driven pane agent (codex, pi, …). **Rooted**
+means this repo's roster (`roster.mjs show --cwd "$PWD"`) lists it or this session spawned
+it — a session merely alive somewhere is never offered. Before briefing, an open request
+with the same slug (`critic-pr-<n>` / `critic-<branch>`) means a peer is already on this
+target: the default is to skip and wait for it. The peer gets a request file and reports by
+response file; its brief carries the same contract a subagent gets — static-only, no
+GitHub I/O, read-only git, every selected checklist pasted inline, `advisor: none` — and
+its reply is roll-called and cross-checked exactly like a subagent's. Details live in the
+`peer-dispatch` skill.
+
 **The recommended reviewer follows the diff's size.** L2 already measures the change, so
 the question names it: at **≤5 files and ≤200 changed lines** the single all-lens agent is
 recommended — six independent reviewers cost roughly 5× and, on a small diff, mostly
